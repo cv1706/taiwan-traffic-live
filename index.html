@@ -5257,10 +5257,10 @@
 
       displayStations.forEach(item => {
         const speedColor = getSpeedColor(item.avgSpeed);
-        const isTunnelSpecial = road.hasTunnelMode && item.station.isTunnel;
+        const isTunnelSpecial = Boolean(item.station.isTunnel);
         const isCurrentGps = nearestStationInfo && item.station.name === nearestStationInfo.station.name;
 
-        // 若為雪隧內部站點：微觀雙車道精簡卡
+        // 若為長隧道內部站點（如雪隧）：微觀雙車道精簡卡
         if (isTunnelSpecial) {
           const lane1 = item.lanes[0] || { speed: -1 };
           const lane2 = item.lanes[1] || { speed: -1 };
@@ -5286,7 +5286,7 @@
             </div>
           `;
         } else {
-          // 一般交流道：單行極簡條 (38px)
+          // 一般交流道：單行極簡條 (38px) - 僅顯示單一醒目斷面平均時速，移除個別車道標籤
           html += `
             <div class="station-strip ${isCurrentGps ? 'is-current-gps-station' : ''}" ${isCurrentGps ? 'id="currentGpsStationRow"' : ''}>
               <div class="strip-left">
@@ -5297,16 +5297,6 @@
               <div class="strip-right">
                 ${item.statusType === 'stale' ? '<span class="strip-badge-stale">過期</span>' : ''}
                 ${item.statusType === 'missing' ? '<span class="strip-badge-missing">離線</span>' : ''}
-
-                ${item.lanes.length > 1 ? `
-                  <div class="strip-lanes-compact">
-                    ${item.lanes.map(l => `
-                      <span class="lane-chip" style="background: ${getSpeedColor(l.speed)}">
-                        ${l.speed > 0 ? l.speed : '--'}
-                      </span>
-                    `).join('')}
-                  </div>
-                ` : ''}
 
                 <span class="strip-avg-speed" style="color: ${speedColor}">
                   ${item.avgSpeed > 0 ? item.avgSpeed : '--'}
