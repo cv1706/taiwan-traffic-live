@@ -213,6 +213,57 @@
       border-color: #3b82f6;
     }
 
+    .btn-location {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: #60a5fa;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .btn-location:hover, .btn-location.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #ffffff;
+    }
+
+    .nearby-banner {
+      background: rgba(37, 99, 235, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      font-size: 0.75rem;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nearby-clear-btn {
+      background: none;
+      border: none;
+      color: #fca5a5;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tile-dist {
+      font-size: 0.65rem;
+      color: #38bdf8;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
     .tab-scroll {
       display: flex;
       gap: 5px;
@@ -1525,7 +1576,80 @@
     ];
 
     /* ==========================================================================
-       2. 應用程式核心狀態
+       2. 道路 GPS 錨點與空間計算引擎
+       ========================================================================== */
+    const ROAD_GEO_ANCHORS = {
+      'freeway-1': { start: [25.127, 121.739], end: [22.595, 120.330] },
+      'freeway-1-elevated': { start: [25.074, 121.652], end: [24.908, 121.155] },
+      'freeway-2': { start: [25.075, 121.230], end: [24.950, 121.340] },
+      'freeway-3': { start: [25.150, 121.710], end: [22.450, 120.480] },
+      'freeway-3a': { start: [25.015, 121.550], end: [25.000, 121.605] },
+      'freeway-4': { start: [24.280, 120.570], end: [24.210, 120.730] },
+      'freeway-5': { start: [25.038, 121.621], end: [24.595, 121.845] },
+      'freeway-6': { start: [24.040, 120.700], end: [23.970, 120.980] },
+      'freeway-8': { start: [23.050, 120.170], end: [23.040, 120.330] },
+      'freeway-10': { start: [22.680, 120.300], end: [22.880, 120.500] },
+      'express-61': { start: [25.150, 121.400], end: [23.130, 120.080] },
+      'express-62': { start: [25.170, 121.680], end: [25.120, 121.820] },
+      'express-64': { start: [25.150, 121.400], end: [24.980, 121.530] },
+      'express-65': { start: [25.068, 121.439], end: [24.960, 121.440] },
+      'express-66': { start: [25.040, 121.080], end: [24.900, 121.280] },
+      'express-68': { start: [24.850, 120.930], end: [24.730, 121.090] },
+      'express-72': { start: [24.610, 120.780], end: [24.450, 120.880] },
+      'express-74': { start: [24.110, 120.600], end: [24.040, 120.700] },
+      'express-76': { start: [23.950, 120.350], end: [23.970, 120.680] },
+      'express-78': { start: [23.700, 120.200], end: [23.650, 120.580] },
+      'express-82': { start: [23.450, 120.150], end: [23.430, 120.480] },
+      'express-84': { start: [23.280, 120.100], end: [23.120, 120.450] },
+      'express-86': { start: [22.920, 120.180], end: [22.950, 120.320] },
+      'express-88': { start: [22.600, 120.350], end: [22.550, 120.530] },
+      'provincial-1': { start: [25.045, 121.520], end: [22.190, 120.650] },
+      'provincial-1a': { start: [25.045, 121.520], end: [24.990, 121.310] },
+      'provincial-2': { start: [25.120, 121.450], end: [24.590, 121.850] },
+      'provincial-3': { start: [25.045, 121.520], end: [22.670, 120.490] },
+      'provincial-7': { start: [24.880, 121.280], end: [24.750, 121.800] },
+      'provincial-7a': { start: [24.600, 121.490], end: [24.250, 121.260] },
+      'provincial-8': { start: [24.260, 120.850], end: [24.160, 121.620] },
+      'provincial-9': { start: [25.045, 121.520], end: [22.190, 120.650] },
+      'provincial-14a': { start: [24.020, 121.130], end: [24.180, 121.310] },
+      'provincial-26': { start: [22.190, 120.650], end: [21.900, 120.850] }
+    };
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getRoadNearestDistance(road, userLat, userLng) {
+      const anchor = ROAD_GEO_ANCHORS[road.id];
+      if (!anchor) return { minDist: 9999, nearestStation: road.stations[0] };
+
+      const maxK = road.stations[road.stations.length - 1].k || 1;
+      let minDist = 9999;
+      let nearestStation = road.stations[0];
+
+      road.stations.forEach(st => {
+        const ratio = Math.min(1, Math.max(0, st.k / maxK));
+        const stLat = anchor.start[0] + (anchor.end[0] - anchor.start[0]) * ratio;
+        const stLng = anchor.start[1] + (anchor.end[1] - anchor.start[1]) * ratio;
+        const d = calculateDistance(userLat, userLng, stLat, stLng);
+        if (d < minDist) {
+          minDist = d;
+          nearestStation = st;
+        }
+      });
+
+      return { minDist, nearestStation };
+    }
+
+    /* ==========================================================================
+       3. 應用程式核心狀態
        ========================================================================== */
     const AppState = {
       currentView: 'index',
@@ -1534,12 +1658,14 @@
       selectedCategory: 'all',
       searchQuery: '',
       isTunnelScopeOnly: false,
+      userLocation: null,
+      isLocating: false,
       countdownSeconds: 60,
       timerId: null
     };
 
     /* ==========================================================================
-       3. 數據生成與色階判定
+       4. 數據生成與色階判定
        ========================================================================== */
     function generateTrafficData(road, direction) {
       const now = new Date();
@@ -1625,18 +1751,26 @@
     }
 
     /* ==========================================================================
-       4. 視圖：極簡高密度首頁 (Dense Index View - 一屏盡覽)
+       5. 視圖：極簡高密度首頁 (Dense Index View - 一屏盡覽 & 支援GPS附近排序)
        ========================================================================== */
     function renderIndexView() {
       AppState.currentView = 'index';
       const container = document.getElementById('appContainer');
 
-      const filteredRoads = ROADS_DATABASE.filter(r => {
+      let filteredRoads = ROADS_DATABASE.filter(r => {
         const matchesCat = (AppState.selectedCategory === 'all') || (r.type === AppState.selectedCategory);
         const q = AppState.searchQuery.trim().toLowerCase();
         const matchesQ = !q || r.num.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
         return matchesCat && matchesQ;
       });
+
+      // 若已取得 GPS 定位，計算每條道路之距離並由近至遠排序
+      if (AppState.userLocation) {
+        filteredRoads = filteredRoads.map(road => {
+          const { minDist, nearestStation } = getRoadNearestDistance(road, AppState.userLocation.lat, AppState.userLocation.lng);
+          return { ...road, minDist, nearestStation };
+        }).sort((a, b) => a.minDist - b.minDist);
+      }
 
       let html = `
         <!-- 雪隧一鍵直達精簡列 -->
@@ -1648,13 +1782,23 @@
           <span class="tunnel-quick-arrow">進入雪隧 →</span>
         </div>
 
-        <!-- 緊湊搜尋與標籤列 -->
+        <!-- 緊湊搜尋與 GPS 定位列 -->
         <div class="search-row">
           <input type="text" class="search-input" id="roadSearchInput" 
                  placeholder="🔍 搜尋編號/地名 (如 國1、台61、台9)..." 
                  value="${AppState.searchQuery}" 
                  oninput="handleSearchInput(this.value)">
+          <button class="btn-location ${AppState.userLocation ? 'active' : ''}" onclick="triggerGeolocation()" title="快速定位並排序附近道路">
+            ${AppState.isLocating ? '⏳ 定位中' : (AppState.userLocation ? '📍 已定位' : '📍 附近')}
+          </button>
         </div>
+
+        ${AppState.userLocation && filteredRoads.length > 0 ? `
+          <div class="nearby-banner">
+            <span>📍 已依您的 GPS 位置排序 (最近：${filteredRoads[0].num} ${filteredRoads[0].nearestStation.name}，相距 ${filteredRoads[0].minDist.toFixed(1)} km)</span>
+            <button class="nearby-clear-btn" onclick="clearGeolocation()">✕ 清除</button>
+          </div>
+        ` : ''}
 
         <div class="tab-scroll">
           <button class="tab-item ${AppState.selectedCategory === 'all' ? 'active' : ''}" onclick="setCategory('all')">全部 (${ROADS_DATABASE.length})</button>
@@ -1671,13 +1815,15 @@
         html += `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 30px 0;">查無符合「${AppState.searchQuery}」的道路</div>`;
       } else {
         filteredRoads.forEach(road => {
+          const distLabel = road.minDist !== undefined ? `📍${road.minDist.toFixed(1)}k` : `${road.stations.length}站`;
           html += `
             <div class="road-dense-tile" onclick="openRoadDetail('${road.id}')">
               <div class="tile-top">
                 <span class="tile-shield ${road.type}">${road.num}</span>
-                <span class="tile-pts">${road.stations.length}站</span>
+                <span class="${road.minDist !== undefined ? 'tile-dist' : 'tile-pts'}">${distLabel}</span>
               </div>
               <div class="tile-name">${road.name.split(' ')[0]}</div>
+              ${road.nearestStation ? `<div style="font-size:0.63rem;color:#38bdf8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">近: ${road.nearestStation.name}</div>` : ''}
             </div>
           `;
         });
@@ -1935,6 +2081,50 @@
       } else {
         renderRoadDetailView();
       }
+    }
+
+    function triggerGeolocation() {
+      if (AppState.userLocation) {
+        AppState.userLocation = null;
+        AppState.isLocating = false;
+        renderIndexView();
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        alert("您的瀏覽器或設備不支援 GPS 定位功能");
+        return;
+      }
+
+      AppState.isLocating = true;
+      renderIndexView();
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          AppState.userLocation = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          AppState.isLocating = false;
+          renderIndexView();
+        },
+        (err) => {
+          AppState.isLocating = false;
+          let msg = "無法取得位置資訊";
+          if (err.code === 1) msg = "您已拒絕位置授權，請至瀏覽器設定開啟定位權限";
+          else if (err.code === 2) msg = "暫時無法取得 GPS 訊號 (可能在室內)";
+          else if (err.code === 3) msg = "定位請求逾時";
+          alert(msg);
+          renderIndexView();
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    }
+
+    function clearGeolocation() {
+      AppState.userLocation = null;
+      AppState.isLocating = false;
+      renderIndexView();
     }
 
     function startTimer() {
