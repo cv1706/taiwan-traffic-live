@@ -1,35 +1,31 @@
 # 全台道路即時路況查詢站 使用說明與維運手冊
 
-本系統為專為行動裝置與桌面瀏覽器設計的高效能即時路況查詢站，涵蓋全台國道、省道快速公路、一般省道主支線，並提供國道五號雪山隧道專屬分道時速監測。
+本系統為專為行動裝置與桌面瀏覽器設計的高效能即時路況查詢站，涵蓋全台國道、省道快速公路、一般省道主支線，並提供國道五號雪山隧道專屬分道時速與進洞智慧推薦。
+
+* **線上公開網址（GitHub Pages）**：[https://cv1706.github.io/taiwan-traffic-live/](https://cv1706.github.io/taiwan-traffic-live/)
+* **GitHub 獨立儲存庫**：[https://github.com/cv1706/taiwan-traffic-live](https://github.com/cv1706/taiwan-traffic-live)
 
 ---
 
-## 一、 快速啟動與連線方式
+## 一、 連線與存取方式
 
-### 1. 電腦本機存取
-於瀏覽器網址列直接輸入：
-* `http://localhost:8089` （或 `http://localhost:8089/index.html`）
+### 1. 線上雲端存取（推薦，手機免連區網）
+直接以手機或電腦瀏覽器開啟：
+* **正式網址**：`https://cv1706.github.io/taiwan-traffic-live/`
+* **手機主畫面捷徑（PWA 體驗）**：
+  * **iOS (Safari)**：點擊瀏覽器下方「分享」按鈕 → 選擇「加入主畫面」。
+  * **Android (Chrome)**：點擊右上角選單「⋮」 → 選擇「加到主螢幕」或「安裝應用程式」。
 
-### 2. 手機區網連線步驟
-當電腦與手機連線於同一個 Wi-Fi 路由器時：
-1. 確認電腦區網 IP（例如：`192.168.1.50`）。
-2. 在手機瀏覽器（Safari、Chrome 等）網址列輸入：
-   ```text
-   http://192.168.1.50:8089
-   ```
-3. 若手機無法開啟，請以系統管理員身分在電腦 PowerShell 執行防火牆放行指令：
-   ```powershell
-   New-NetFirewallRule -DisplayName "Allow Traffic Web Server 8089" -Direction Inbound -LocalPort 8089 -Protocol TCP -Action Allow
-   ```
-
-### 3. 伺服器啟動與終止指令
-* **啟動指令（進入專案目錄）**：
+### 2. 電腦本機與區域網路存取
+* **本機存取**：`http://localhost:8089` （或 `http://localhost:8089/index.html`）
+* **手機區網存取**（需連同一個 Wi-Fi）：`http://192.168.1.50:8089`
+* **本機伺服器啟動指令**：
   ```powershell
   python -m http.server 8089 --directory "c:\Users\yangk\.gemini\antigravity\scratch\Obsidian-Vault\taiwan-traffic-live"
   ```
-* **背景停止指令**：
+* **防火牆放行指令**（若手機無法連線時於 PowerShell 執行）：
   ```powershell
-  Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force
+  New-NetFirewallRule -DisplayName "Allow Traffic Web Server 8089" -Direction Inbound -LocalPort 8089 -Protocol TCP -Action Allow
   ```
 
 ---
@@ -37,8 +33,8 @@
 ## 二、 核心功能操作指南
 
 ### 1. 首頁：全台道路高密度索引矩陣
-* **雪山隧道一鍵直達**：頂部置頂藍色橫幅「🏔️ 國 5・雪山隧道專區」，點擊秒進雪隧微觀分道時速。
-* **關鍵字搜尋**：支援輸入道路編號（如「國 1」、「台 61」）或地名（如「合歡山」、「林口」）即時篩選。
+* **雪山隧道一鍵直達**：頂部置頂藍色橫幅「🏔️ 國 5・雪山隧道專區」，點擊秒進雪隧微觀分道時速與進洞決策卡。
+* **關鍵字搜尋**：輸入道路編號（如「國 1」、「台 61」）或地名（如「合歡山」、「林口」）即時篩選。
 * **系統分類標籤**：可切換「全部」、「國道」、「快速公路」、「省道」。
 * **三欄微徽章按鈕**：單屏呈現 34 條以上路線，大幅減少上下滾動。
 
