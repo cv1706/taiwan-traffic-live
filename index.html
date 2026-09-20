@@ -4877,6 +4877,11 @@
       forwardOnlyMode: false,
       userLocation: null,
       isLocating: false,
+      watchId: null,
+      wakeLock: null,
+      userIsScrolling: false,
+      scrollTimeoutId: null,
+      lastNearestStationName: null,
       countdownSeconds: 60,
       timerId: null
     };
@@ -5310,8 +5315,8 @@
       html += `</div>`;
       container.innerHTML = html;
 
-      // 若存在目前 GPS 定位之交流道，且處於「全線速覽」模式，自動平滑滾動至螢幕中央
-      if (nearestStationInfo && !AppState.forwardOnlyMode) {
+      // 若存在目前 GPS 定位之交流道，且處於「全線速覽」模式且使用者未在手動滑動，自動平滑滾動至螢幕中央
+      if (nearestStationInfo && !AppState.forwardOnlyMode && !AppState.userIsScrolling) {
         setTimeout(() => {
           const rowEl = document.getElementById('currentGpsStationRow');
           if (rowEl) {
@@ -5322,7 +5327,7 @@
     }
 
     /* ==========================================================================
-       7. 互動事件與計時器管理
+       7. 互動事件與計時器管理 (支援 watchPosition 動態跟隨與螢幕長亮)
        ========================================================================== */
     function openRoadDetail(roadId) {
       const road = ROADS_DATABASE.find(r => r.id === roadId);
@@ -5380,10 +5385,8 @@
     }
 
     function triggerGeolocation() {
-      if (AppState.userLocation) {
-        AppState.userLocation = null;
-        AppState.isLocating = false;
-        renderIndexView();
+      if (AppState.watchId !== null || AppState.userLocation) {
+        clearGeolocation();
         return;
       }
 
@@ -5395,14 +5398,36 @@
       AppState.isLocating = true;
       renderIndexView();
 
-      navigator.geolocation.getCurrentPosition(
+      // 請求螢幕長亮 (防止駕駛中手機休眠)
+      try {
+        if ('wakeLock' in navigator) {
+          navigator.wakeLock.request('screen').then(lock => {
+            AppState.wakeLock = lock;
+          }).catch(() => {});
+        }
+      } catch (e) {}
+
+      // 啟動持續動態追蹤 (watchPosition)
+      AppState.watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          AppState.userLocation = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          };
+          const newLat = pos.coords.latitude;
+          const newLng = pos.coords.longitude;
+          AppState.userLocation = { lat: newLat, lng: newLng };
           AppState.isLocating = false;
-          renderIndexView();
+
+          if (AppState.currentView === 'index') {
+            renderIndexView();
+          } else if (AppState.currentView === 'road-detail') {
+            const road = ROADS_DATABASE.find(r => r.id === AppState.selectedRoadId);
+            if (road) {
+              const { nearestStation } = getRoadNearestDistance(road, newLat, newLng);
+              const hasStationChanged = (AppState.lastNearestStationName !== nearestStation.name);
+              AppState.lastNearestStationName = nearestStation.name;
+
+              // 當車輛行經新交流道或處於僅看前方模式時即時重新渲染畫面
+              renderRoadDetailView();
+            }
+          }
         },
         (err) => {
           AppState.isLocating = false;
@@ -5410,17 +5435,47 @@
           if (err.code === 1) msg = "您已拒絕位置授權，請至瀏覽器設定開啟定位權限";
           else if (err.code === 2) msg = "暫時無法取得 GPS 訊號 (可能在室內)";
           else if (err.code === 3) msg = "定位請求逾時";
-          alert(msg);
-          renderIndexView();
+          if (!AppState.userLocation) {
+            alert(msg);
+            clearGeolocation();
+          }
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
       );
     }
 
     function clearGeolocation() {
+      if (AppState.watchId !== null) {
+        navigator.geolocation.clearWatch(AppState.watchId);
+        AppState.watchId = null;
+      }
+      if (AppState.wakeLock) {
+        AppState.wakeLock.release().catch(() => {});
+        AppState.wakeLock = null;
+      }
       AppState.userLocation = null;
       AppState.isLocating = false;
-      renderIndexView();
+      AppState.lastNearestStationName = null;
+      if (AppState.currentView === 'index') {
+        renderIndexView();
+      } else {
+        renderRoadDetailView();
+      }
+    }
+
+    // 防手動干擾機制：當使用者正主動滾動檢視時，暫停自動跳轉 3.5 秒
+    function setupScrollProtection() {
+      const onUserInteraction = () => {
+        AppState.userIsScrolling = true;
+        if (AppState.scrollTimeoutId) clearTimeout(AppState.scrollTimeoutId);
+        AppState.scrollTimeoutId = setTimeout(() => {
+          AppState.userIsScrolling = false;
+        }, 3500);
+      };
+
+      window.addEventListener('touchstart', onUserInteraction, { passive: true });
+      window.addEventListener('wheel', onUserInteraction, { passive: true });
+      window.addEventListener('touchmove', onUserInteraction, { passive: true });
     }
 
     function startTimer() {
@@ -5449,6 +5504,7 @@
     window.addEventListener('DOMContentLoaded', () => {
       renderIndexView();
       startTimer();
+      setupScrollProtection();
     });
   </script>
 </body>
