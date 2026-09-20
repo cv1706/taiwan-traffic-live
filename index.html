@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>全台道路即時路況查詢站</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-body: #0a0e17;
+      --bg-header: #111827;
+      --bg-card: #162032;
+      --bg-card-hover: #1e2c45;
+      --border: #23324d;
+      
+      --text-main: #f9fafb;
+      --text-sub: #94a3b8;
+      --text-dim: #64748b;
+      
+      --speed-green: #10b981;
+      --speed-yellow: #eab308;
+      --speed-orange: #f97316;
+      --speed-red: #ef4444;
+      --speed-purple: #a855f7;
+      --speed-gray: #475569;
+      
+      --badge-freeway: #059669;
+      --badge-express: #dc2626;
+      --badge-provincial: #2563eb;
+      
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', 'Noto Sans TC', -apple-system, sans-serif;
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+      line-height: 1.4;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* 緊湊固定頂部列 (Compact Sticky Header) */
+    header {
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .header-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .brand-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      color: var(--text-main);
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 1rem;
+      padding: 2px 4px;
+      border-radius: var(--radius-sm);
+    }
+
+    .brand-btn:active {
+      opacity: 0.8;
+    }
+
+    .brand-tag {
+      background: #2563eb;
+      color: #fff;
+      font-size: 0.65rem;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .timer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+
+    .timer-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .btn-refresh {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* 主要容器 */
+    main {
+      flex: 1;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 10px 12px;
+    }
+
+    /* 首頁：雪隧一鍵直達精簡列 */
+    .tunnel-quick-bar {
+      background: linear-gradient(90deg, #1e3a8a 0%, #1e1b4b 100%);
+      border: 1px solid #3b82f6;
+      border-radius: var(--radius-md);
+      padding: 9px 12px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+    }
+
+    .tunnel-quick-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .tunnel-quick-badge {
+      background: #3b82f6;
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    .tunnel-quick-arrow {
+      font-size: 0.75rem;
+      color: #93c5fd;
+      font-weight: 700;
+    }
+
+    /* 首頁：搜尋與分類標籤 (極簡緊湊) */
+    .search-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #3b82f6;
+    }
+
+    .tab-scroll {
+      display: flex;
+      gap: 5px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      margin-bottom: 10px;
+      scrollbar-width: none;
+    }
+    .tab-scroll::-webkit-scrollbar { display: none; }
+
+    .tab-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-sub);
+      padding: 4px 10px;
+      border-radius: 14px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .tab-item.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #fff;
+    }
+
+    /* 首頁：高密度道路編號按鈕網格 (Dense Tile Grid - 一屏全覽) */
+    .road-dense-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 480px) {
+      .road-dense-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+      }
+    }
+
+    .road-dense-tile {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .road-dense-tile:active {
+      background: var(--bg-card-hover);
+      border-color: #3b82f6;
+    }
+
+    .tile-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      margin-bottom: 2px;
+    }
+
+    .tile-shield {
+      font-size: 0.8rem;
+      font-weight: 900;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .tile-shield.freeway { background: var(--badge-freeway); }
+    .tile-shield.express { background: var(--badge-express); }
+    .tile-shield.provincial { background: var(--badge-provincial); }
+
+    .tile-pts {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+
+    .tile-name {
+      font-size: 0.72rem;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 內頁：極簡道路控制列 (Road Control Header) */
+    .road-ctrl-card {
+      background: var(--bg-header);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .ctrl-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .back-link {
+      background: none;
+      border: none;
+      color: #60a5fa;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 0;
+    }
+
+    .ctrl-road-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.95rem;
+      font-weight: 800;
+    }
+
+    .ctrl-dir-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+    }
+
+    .seg-btn-group {
+      display: flex;
+      background: var(--bg-body);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .seg-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-sub);
+      padding: 3px 10px;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .seg-btn.active {
+      background: #2563eb;
+      color: #fff;
+    }
+
+    /* 精簡即時事件橫幅 */
+    .incident-strip {
+      background: rgba(239, 68, 68, 0.12);
+      border-left: 3px solid #ef4444;
+      padding: 5px 8px;
+      font-size: 0.75rem;
+      color: #fca5a5;
+      margin-bottom: 6px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .incident-strip.warn {
+      background: rgba(245, 158, 11, 0.12);
+      border-left-color: #f59e0b;
+      color: #fcd34d;
+    }
+
+    /* 極簡色階圖例 (極小化單行) */
+    .legend-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255,255,255,0.03);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .legend-colors {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .leg-dot {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .leg-box {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+    }
+
+    /* 極簡單行路段列表 (Compact Strip Rows - 最少捲動核心) */
+    .strip-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .strip-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      border-left: 4px solid var(--row-color, var(--speed-gray));
+    }
+
+    .strip-row:active {
+      background: var(--bg-card-hover);
+    }
+
+    .strip-left {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .strip-name {
+      font-size: 0.85rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .strip-k {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: monospace;
+      flex-shrink: 0;
+    }
+
+    .strip-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .strip-speed-badge {
+      display: flex;
+      align-items: baseline;
+      gap: 2px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.3);
+      min-width: 68px;
+      justify-content: center;
+    }
+
+    .strip-speed-num {
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: var(--row-color, var(--text-main));
+      font-family: 'Inter', monospace;
+      line-height: 1;
+    }
+
+    .strip-speed-unit {
+      font-size: 0.62rem;
+      color: var(--text-dim);
+    }
+
+    .strip-tag {
+      font-size: 0.65rem;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .strip-tag.stale {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .strip-tag.missing {
+      background: rgba(100, 116, 139, 0.2);
+      color: #94a3b8;
+    }
+
+    /* 雪隧專用微觀雙車道精簡卡 (Snow Tunnel Compact Dual-Lane) */
+    .tunnel-dual-strip {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-left: 4px solid #3b82f6;
+    }
+
+    .tunnel-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .tunnel-lanes-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .tunnel-lane-cell {
+      background: var(--bg-body);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .lane-txt {
+      font-size: 0.72rem;
+      color: var(--text-sub);
+    }
+
+    .lane-num-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 2px;
+    }
+
+    .lane-num {
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: var(--lane-color, var(--text-main));
+      font-family: monospace;
+      line-height: 1;
+    }
+
+    /* 雪隧全線雙車道均速與進洞推薦決策卡 */
+    .tunnel-decision-card {
+      background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%);
+      border: 1px solid #3b82f6;
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .decision-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: #93c5fd;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .decision-col {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      text-align: center;
+    }
+
+    .decision-col.winner {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.08);
+    }
+
+    .decision-lane-title {
+      font-size: 0.72rem;
+      color: var(--text-sub);
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .decision-speed {
+      font-size: 1.3rem;
+      font-weight: 900;
+      font-family: 'Inter', monospace;
+      line-height: 1.1;
+    }
+
+    .decision-time {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .decision-rec-banner {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .decision-rec-banner.fast {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+
+    /* 頁尾精簡標示 */
+    footer {
+      text-align: center;
+      padding: 10px;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      border-top: 1px solid var(--border);
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 固定頂部 Header (極度精簡) -->
+  <header>
+    <div class="header-inner">
+      <button class="brand-btn" onclick="renderIndexView()">
+        🛣️ 全台即時路況 <span class="brand-tag">MVP</span>
+      </button>
+
+      <div class="header-right">
+        <div class="timer-pill">
+          <div class="timer-dot"></div>
+          <span id="countdownText">60s</span>
+        </div>
+        <button class="btn-refresh" onclick="manualRefresh()">🔄 刷新</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區 -->
+  <main id="appContainer"></main>
+
+  <footer>
+    資料來源：高公局 1968 / TDX 交通平台 (60s 自動輪詢・標示過期及離線)
+  </footer>
+
+  <script>
+    /* ==========================================================================
+       1. 台灣完整道路資料庫（涵蓋國道、快速公路、一般省道主支線、雪隧）
+       ========================================================================== */
+    const ROADS_DATABASE = [
+      // === 國道系列 ===
+      {
+        id: 'freeway-5',
+        type: 'freeway',
+        num: '國5',
+        name: '蔣渭水高速公路 (南港-蘇澳)',
+        hasTunnelMode: true,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往宜蘭)' },
+          { key: 'N', name: '北上 (往台北)' }
+        ],
+        stations: [
+          { name: '南港系統', k: 0.0, lanes: 2 },
+          { name: '石碇交流道', k: 4.0, lanes: 2 },
+          { name: '烏塗隧道', k: 7.5, lanes: 2 },
+          { name: '彭山隧道', k: 11.2, lanes: 2 },
+          { name: '坪林交流道', k: 14.5, lanes: 2 },
+          { name: '雪隧 15.3k (北口)', k: 15.3, lanes: 2, isTunnel: true },
+          { name: '雪隧 18.5k (一號機房)', k: 18.5, lanes: 2, isTunnel: true },
+          { name: '雪隧 21.0k (中段)', k: 21.0, lanes: 2, isTunnel: true },
+          { name: '雪隧 24.2k (三號機房)', k: 24.2, lanes: 2, isTunnel: true },
+          { name: '雪隧 27.8k (南口)', k: 27.8, lanes: 2, isTunnel: true },
+          { name: '頭城交流道', k: 30.0, lanes: 2 },
+          { name: '宜蘭交流道', k: 38.0, lanes: 2 },
+          { name: '羅東交流道', k: 46.5, lanes: 2 },
+          { name: '蘇澳端', k: 54.3, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-1',
+        type: 'freeway',
+        num: '國1',
+        name: '中山高速公路 (基隆-高雄)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往高雄)' },
+          { key: 'N', name: '北上 (往基隆)' }
+        ],
+        stations: [
+          { name: '基隆端', k: 0.0, lanes: 2 },
+          { name: '八堵交流道', k: 2.6, lanes: 2 },
+          { name: '汐止系統', k: 11.5, lanes: 3 },
+          { name: '台北/重慶北路', k: 25.1, lanes: 4 },
+          { name: '三重交流道', k: 27.3, lanes: 3 },
+          { name: '五股交流道', k: 33.1, lanes: 4 },
+          { name: '林口交流道', k: 41.5, lanes: 4 },
+          { name: '桃園交流道', k: 49.1, lanes: 3 },
+          { name: '機場系統', k: 52.5, lanes: 3 },
+          { name: '中壢交流道', k: 62.4, lanes: 3 },
+          { name: '楊梅端', k: 69.2, lanes: 3 },
+          { name: '新竹系統', k: 99.4, lanes: 3 },
+          { name: '台中交流道', k: 178.6, lanes: 3 },
+          { name: '彰化系統', k: 192.8, lanes: 3 },
+          { name: '台南交流道', k: 327.4, lanes: 3 },
+          { name: '高雄端', k: 372.7, lanes: 3 }
+        ]
+      },
+      {
+        id: 'freeway-1-elevated',
+        type: 'freeway',
+        num: '國1高',
+        name: '汐五楊梅高架 (汐止-楊梅)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往楊梅)' },
+          { key: 'N', name: '北上 (往汐止)' }
+        ],
+        stations: [
+          { name: '汐止端 (高架起點)', k: 12.0, lanes: 2 },
+          { name: '堤頂交流道', k: 18.8, lanes: 2 },
+          { name: '環北交流道', k: 25.8, lanes: 2 },
+          { name: '五股轉接道', k: 32.5, lanes: 3 },
+          { name: '機場轉接道', k: 52.8, lanes: 3 },
+          { name: '中壢轉接道', k: 59.0, lanes: 3 },
+          { name: '楊梅端 (高架終點)', k: 70.5, lanes: 3 }
+        ]
+      },
+      {
+        id: 'freeway-3',
+        type: 'freeway',
+        num: '國3',
+        name: '福爾摩沙高速公路 (基金-大鵬灣)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往屏東)' },
+          { key: 'N', name: '北上 (往基隆)' }
+        ],
+        stations: [
+          { name: '基金交流道', k: 0.0, lanes: 2 },
+          { name: '汐止系統', k: 10.9, lanes: 3 },
+          { name: '南港系統 (接國5)', k: 16.2, lanes: 3 },
+          { name: '木柵交流道', k: 20.8, lanes: 3 },
+          { name: '中和交流道', k: 35.8, lanes: 4 },
+          { name: '土城交流道', k: 42.8, lanes: 4 },
+          { name: '三峽交流道', k: 50.4, lanes: 3 },
+          { name: '大溪交流道', k: 62.7, lanes: 3 },
+          { name: '龍潭交流道', k: 68.2, lanes: 3 },
+          { name: '關西交流道', k: 79.3, lanes: 3 },
+          { name: '竹林交流道', k: 90.3, lanes: 3 },
+          { name: '快官系統', k: 202.1, lanes: 3 },
+          { name: '霧峰系統', k: 214.2, lanes: 3 },
+          { name: '古坑系統', k: 269.2, lanes: 3 },
+          { name: '新化系統', k: 346.7, lanes: 3 },
+          { name: '大鵬灣端', k: 431.5, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-2',
+        type: 'freeway',
+        num: '國2',
+        name: '桃園環線 (機場端-鶯歌系統)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往鶯歌/國3)' },
+          { key: 'W', name: '西向 (往桃園機場)' }
+        ],
+        stations: [
+          { name: '機場端', k: 0.0, lanes: 2 },
+          { name: '大園交流道', k: 0.9, lanes: 3 },
+          { name: '機場系統 (接國1)', k: 8.6, lanes: 4 },
+          { name: '南桃園交流道', k: 11.6, lanes: 4 },
+          { name: '大湳交流道', k: 18.0, lanes: 3 },
+          { name: '鶯歌系統 (接國3)', k: 20.4, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-3a',
+        type: 'freeway',
+        num: '國3甲',
+        name: '台北聯絡線 (台北端-深坑端)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往深坑)' },
+          { key: 'W', name: '西向 (往辛亥路)' }
+        ],
+        stations: [
+          { name: '台北端 (辛亥路)', k: 0.0, lanes: 2 },
+          { name: '萬芳交流道', k: 3.6, lanes: 2 },
+          { name: '木柵交流道 (接國3)', k: 5.0, lanes: 2 },
+          { name: '深坑端', k: 5.6, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-4',
+        type: 'freeway',
+        num: '國4',
+        name: '台中環線 (清水端-潭子系統)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往潭子/台74)' },
+          { key: 'W', name: '西向 (往清水/港區)' }
+        ],
+        stations: [
+          { name: '清水端', k: 0.0, lanes: 2 },
+          { name: '中港系統 (接國3)', k: 2.3, lanes: 3 },
+          { name: '台中系統 (接國1)', k: 11.7, lanes: 3 },
+          { name: '潭子系統 (接台74)', k: 28.1, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-6',
+        type: 'freeway',
+        num: '國6',
+        name: '水沙連高速公路 (霧峰-埔里)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往埔里/日月潭)' },
+          { key: 'W', name: '西向 (往霧峰/國3)' }
+        ],
+        stations: [
+          { name: '霧峰系統 (接國3)', k: 0.0, lanes: 2 },
+          { name: '東草屯交流道', k: 5.0, lanes: 2 },
+          { name: '國姓交流道', k: 17.6, lanes: 2 },
+          { name: '愛蘭交流道', k: 29.0, lanes: 2 },
+          { name: '埔里端', k: 37.6, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-8',
+        type: 'freeway',
+        num: '國8',
+        name: '台南支線 (台南端-新化系統)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往新化)' },
+          { key: 'W', name: '西向 (往安南/台南端)' }
+        ],
+        stations: [
+          { name: '台南端', k: 0.0, lanes: 2 },
+          { name: '台南系統 (接國1)', k: 6.5, lanes: 2 },
+          { name: '新化系統 (接國3)', k: 14.2, lanes: 2 }
+        ]
+      },
+      {
+        id: 'freeway-10',
+        type: 'freeway',
+        num: '國10',
+        name: '高雄支線 (左營端-旗山端)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往旗山/美濃)' },
+          { key: 'W', name: '西向 (往左營/市區)' }
+        ],
+        stations: [
+          { name: '左營端', k: 0.0, lanes: 2 },
+          { name: '鼎金系統 (接國1)', k: 1.9, lanes: 3 },
+          { name: '仁武交流道', k: 7.0, lanes: 2 },
+          { name: '燕巢系統 (接國3)', k: 19.7, lanes: 2 },
+          { name: '旗山端', k: 33.8, lanes: 2 }
+        ]
+      },
+
+      // === 省道快速公路系列 ===
+      {
+        id: 'express-61',
+        type: 'express',
+        num: '台61',
+        name: '西部濱海快速公路 (八里-七股)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往台中/台南)' },
+          { key: 'N', name: '北上 (往新北/八里)' }
+        ],
+        stations: [
+          { name: '八里端 (接台64)', k: 0.0, lanes: 2 },
+          { name: '觀音交流道', k: 40.0, lanes: 2 },
+          { name: '新竹香山', k: 78.5, lanes: 2 },
+          { name: '白沙屯交流道', k: 112.0, lanes: 2 },
+          { name: '梧棲交流道', k: 154.5, lanes: 2 },
+          { name: '彰化鹿港', k: 177.0, lanes: 2 },
+          { name: '麥寮交流道', k: 216.0, lanes: 2 },
+          { name: '台西交流道 (接台78)', k: 233.0, lanes: 2 },
+          { name: '東石交流道 (接台82)', k: 262.0, lanes: 2 },
+          { name: '北門交流道 (接台84)', k: 283.0, lanes: 2 },
+          { name: '七股十份端', k: 305.7, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-62',
+        type: 'express',
+        num: '台62',
+        name: '萬里瑞濱線 (萬里-瑞濱)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往瑞濱/九份)' },
+          { key: 'W', name: '西向 (往萬里/金山)' }
+        ],
+        stations: [
+          { name: '萬里端', k: 0.0, lanes: 2 },
+          { name: '大華系統 (接國1)', k: 12.0, lanes: 2 },
+          { name: '瑞濱端 (接台2線)', k: 18.7, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-64',
+        type: 'express',
+        num: '台64',
+        name: '八里新店線 (八里-新店)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往中和/新店)' },
+          { key: 'W', name: '西向 (往八里/台北港)' }
+        ],
+        stations: [
+          { name: '八里交流道', k: 1.2, lanes: 2 },
+          { name: '五股一交流道', k: 10.5, lanes: 2 },
+          { name: '板橋交流道', k: 20.2, lanes: 2 },
+          { name: '中和交流道 (接國3)', k: 24.0, lanes: 2 },
+          { name: '新店端 (秀朗橋)', k: 28.3, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-65',
+        type: 'express',
+        num: '台65',
+        name: '五股土城線 (五股-土城)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往土城/國3)' },
+          { key: 'N', name: '北上 (往五股/國1)' }
+        ],
+        stations: [
+          { name: '五股端 (接國1)', k: 0.0, lanes: 2 },
+          { name: '新莊二交流道', k: 4.2, lanes: 2 },
+          { name: '板橋二 (縣民大道)', k: 8.5, lanes: 2 },
+          { name: '土城二 (接國3)', k: 12.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-66',
+        type: 'express',
+        num: '台66',
+        name: '觀音大溪線 (觀音-大溪)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往大溪/國3)' },
+          { key: 'W', name: '西向 (往觀音/台61)' }
+        ],
+        stations: [
+          { name: '觀音端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '平鎮系統 (接國1)', k: 18.0, lanes: 2 },
+          { name: '大溪端 (接國3)', k: 27.2, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-68',
+        type: 'express',
+        num: '台68',
+        name: '南寮竹東線 (南寮-竹東)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往竹東)' },
+          { key: 'W', name: '西向 (往南寮漁港)' }
+        ],
+        stations: [
+          { name: '南寮端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '新竹系統 (經國大橋)', k: 9.6, lanes: 2 },
+          { name: '竹東端', k: 23.4, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-72',
+        type: 'express',
+        num: '台72',
+        name: '後龍汶水線 (後龍-汶水)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往大湖/汶水)' },
+          { key: 'W', name: '西向 (往後龍/台61)' }
+        ],
+        stations: [
+          { name: '後龍端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '頭屋交流道 (接國1)', k: 12.0, lanes: 2 },
+          { name: '汶水端 (接台3線)', k: 31.0, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-74',
+        type: 'express',
+        num: '台74',
+        name: '快官霧峰線 (台中環線)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '順時針 (潭子/霧峰)' },
+          { key: 'W', name: '逆時針 (快官/烏日)' }
+        ],
+        stations: [
+          { name: '快官交流道 (接國3)', k: 0.0, lanes: 3 },
+          { name: '高鐵台中站', k: 4.0, lanes: 3 },
+          { name: '西屯三 (市政路)', k: 9.8, lanes: 3 },
+          { name: '北屯二 (中清/國1)', k: 14.5, lanes: 3 },
+          { name: '潭子系統 (接國4)', k: 18.8, lanes: 3 },
+          { name: '太原交流道', k: 24.5, lanes: 3 },
+          { name: '大里二交流道', k: 32.0, lanes: 3 },
+          { name: '霧峰系統 (接國3)', k: 37.8, lanes: 3 }
+        ]
+      },
+      {
+        id: 'express-76',
+        type: 'express',
+        num: '台76',
+        name: '芳苑草屯線 (芳苑-草屯)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往草屯/國3)' },
+          { key: 'W', name: '西向 (往芳苑/台61)' }
+        ],
+        stations: [
+          { name: '芳苑端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '埔鹽系統 (接國1)', k: 15.3, lanes: 2 },
+          { name: '八卦山隧道', k: 27.5, lanes: 2 },
+          { name: '中興系統 (接國3)', k: 32.6, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-78',
+        type: 'express',
+        num: '台78',
+        name: '台西古坑線 (台西-古坑)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往古坑/國3)' },
+          { key: 'W', name: '西向 (往台西/台61)' }
+        ],
+        stations: [
+          { name: '台西端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '雲林系統 (接國1)', k: 30.2, lanes: 2 },
+          { name: '古坑系統 (接國3)', k: 42.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-82',
+        type: 'express',
+        num: '台82',
+        name: '東石嘉義線 (東石-水上)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往水上/國3)' },
+          { key: 'W', name: '西向 (往東石/台61)' }
+        ],
+        stations: [
+          { name: '東石端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '嘉義系統 (接國1)', k: 22.5, lanes: 2 },
+          { name: '中埔系統 (接國3)', k: 33.9, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-84',
+        type: 'express',
+        num: '台84',
+        name: '北門玉井線 (北門-玉井)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往玉井山區)' },
+          { key: 'W', name: '西向 (往北門/台61)' }
+        ],
+        stations: [
+          { name: '北門交流道 (接台61)', k: 0.0, lanes: 2 },
+          { name: '下營系統 (接國1)', k: 14.0, lanes: 2 },
+          { name: '官田系統 (接國3)', k: 27.8, lanes: 2 },
+          { name: '玉井端 (接台3線)', k: 37.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-86',
+        type: 'express',
+        num: '台86',
+        name: '台南關廟線 (台南-關廟)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往關廟/國3)' },
+          { key: 'W', name: '西向 (往安平/台17)' }
+        ],
+        stations: [
+          { name: '灣裡交流道', k: 0.0, lanes: 2 },
+          { name: '仁德系統 (接國1)', k: 8.6, lanes: 2 },
+          { name: '關廟系統 (接國3)', k: 18.9, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-88',
+        type: 'express',
+        num: '台88',
+        name: '高雄潮州線 (高雄-潮州)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往潮州/國3)' },
+          { key: 'W', name: '西向 (往高雄/國1)' }
+        ],
+        stations: [
+          { name: '五甲系統 (接國1)', k: 0.0, lanes: 2 },
+          { name: '大寮交流道', k: 7.0, lanes: 2 },
+          { name: '萬丹交流道 (萬大橋)', k: 12.5, lanes: 2 },
+          { name: '竹田系統 (接國3)', k: 21.0, lanes: 2 }
+        ]
+      },
+
+      // === 一般省道主線與主要支線 ===
+      {
+        id: 'provincial-1',
+        type: 'provincial',
+        num: '台1',
+        name: '縱貫公路 (台北-屏東楓港)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往中南/屏東)' },
+          { key: 'N', name: '北上 (往台北/新北)' }
+        ],
+        stations: [
+          { name: '台北忠孝西路起點', k: 0.0, lanes: 3 },
+          { name: '新莊中正路', k: 10.2, lanes: 3 },
+          { name: '中壢延平路', k: 32.0, lanes: 2 },
+          { name: '新竹中華路', k: 72.0, lanes: 2 },
+          { name: '台中清水中山路', k: 152.0, lanes: 2 },
+          { name: '彰化市中山路', k: 185.0, lanes: 2 },
+          { name: '台南市中華路', k: 325.0, lanes: 2 },
+          { name: '高雄市民族路', k: 370.0, lanes: 3 },
+          { name: '屏東楓港終點', k: 461.6, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-1a',
+        type: 'provincial',
+        num: '台1甲',
+        name: '縱貫公路台北桃園支線 (中山北路-桃園市區)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往桃園市區)' },
+          { key: 'N', name: '北上 (往台北中山)' }
+        ],
+        stations: [
+          { name: '台北市行政院起點', k: 0.0, lanes: 3 },
+          { name: '三重三和路', k: 6.5, lanes: 2 },
+          { name: '桃園復興路終點', k: 27.4, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-2',
+        type: 'provincial',
+        num: '台2',
+        name: '北部濱海公路 (淡水關渡-蘇澳)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '順向 (往基隆/宜蘭)' },
+          { key: 'W', name: '逆向 (往淡水/關渡)' }
+        ],
+        stations: [
+          { name: '關渡大橋起點', k: 0.0, lanes: 2 },
+          { name: '淡水捷運站前', k: 5.0, lanes: 2 },
+          { name: '金山中角灣', k: 40.0, lanes: 2 },
+          { name: '基隆外木山', k: 56.5, lanes: 2 },
+          { name: '瑞芳水湳洞', k: 78.5, lanes: 2 },
+          { name: '貢寮福隆', k: 100.5, lanes: 2 },
+          { name: '頭城烏石港', k: 135.0, lanes: 2 },
+          { name: '蘇澳港終點', k: 167.7, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-3',
+        type: 'provincial',
+        num: '台3',
+        name: '內山公路 (台北-屏東)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往中南部山線)' },
+          { key: 'N', name: '北上 (往台北板橋)' }
+        ],
+        stations: [
+          { name: '板橋文化路', k: 5.2, lanes: 3 },
+          { name: '大溪老街周邊', k: 37.0, lanes: 2 },
+          { name: '竹東市區', k: 75.0, lanes: 2 },
+          { name: '大湖草莓園區', k: 130.0, lanes: 2 },
+          { name: '南投草屯中正路', k: 205.0, lanes: 2 },
+          { name: '嘉義中埔 (阿婆彎)', k: 310.0, lanes: 2 },
+          { name: '屏東市和平路終點', k: 436.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-7',
+        type: 'provincial',
+        num: '台7',
+        name: '北部橫貫公路 (大溪-壯圍)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往復興/宜蘭)' },
+          { key: 'W', name: '西向 (往桃園大溪)' }
+        ],
+        stations: [
+          { name: '大溪起點', k: 0.0, lanes: 2 },
+          { name: '角板山商圈', k: 16.5, lanes: 2 },
+          { name: '巴陵大橋 (拉拉山)', k: 47.0, lanes: 2 },
+          { name: '明池森林遊樂區', k: 65.5, lanes: 1 },
+          { name: '壯圍終點 (接台2)', k: 128.5, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-7a',
+        type: 'provincial',
+        num: '台7甲',
+        name: '中橫宜蘭支線 (棲蘭-梨山)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往武陵/梨山)' },
+          { key: 'N', name: '北上 (往棲蘭/台7)' }
+        ],
+        stations: [
+          { name: '百韜橋起點 (接台7)', k: 0.0, lanes: 2 },
+          { name: '南山部落', k: 30.0, lanes: 2 },
+          { name: '思源埡口 (宜中交界)', k: 45.0, lanes: 1 },
+          { name: '武陵農場入口', k: 53.0, lanes: 2 },
+          { name: '梨山終點 (接台8)', k: 73.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-8',
+        type: 'provincial',
+        num: '台8',
+        name: '中部橫貫公路 (東勢-太魯閣)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往谷關/花蓮)' },
+          { key: 'W', name: '西向 (往台中東勢)' }
+        ],
+        stations: [
+          { name: '東勢起點', k: 0.0, lanes: 2 },
+          { name: '谷關風景區', k: 34.0, lanes: 2 },
+          { name: '梨山 (接台7甲)', k: 82.0, lanes: 2 },
+          { name: '大禹嶺 (接台14甲)', k: 112.0, lanes: 1 },
+          { name: '天祥遊憩區', k: 169.0, lanes: 2 },
+          { name: '太魯閣牌樓終點', k: 187.8, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-9',
+        type: 'provincial',
+        num: '台9',
+        name: '蘇花公路／南迴 (台北-楓港)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往宜蘭/花東)' },
+          { key: 'N', name: '北上 (往台北/新店)' }
+        ],
+        stations: [
+          { name: '新店北宜公路起點', k: 12.0, lanes: 2 },
+          { name: '坪林市區 (接國5)', k: 38.0, lanes: 2 },
+          { name: '礁溪溫泉區', k: 68.0, lanes: 2 },
+          { name: '蘇澳蘇花改入口', k: 104.0, lanes: 2 },
+          { name: '東澳隧道', k: 114.0, lanes: 2 },
+          { name: '和平谷風隧道', k: 142.0, lanes: 2 },
+          { name: '花蓮市中正路', k: 190.0, lanes: 3 },
+          { name: '台東池上伯朗大道', k: 310.0, lanes: 2 },
+          { name: '草埔森永隧道 (南迴改)', k: 432.0, lanes: 2 },
+          { name: '屏東楓港終點', k: 453.9, lanes: 2 }
+        ]
+      },
+      {
+        id: 'provincial-14a',
+        type: 'provincial',
+        num: '台14甲',
+        name: '合歡山公路 (霧社-大禹嶺)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往清境/武嶺)' },
+          { key: 'W', name: '西向 (往下山/霧社)' }
+        ],
+        stations: [
+          { name: '霧社起點 (接台14)', k: 0.0, lanes: 2 },
+          { name: '清境農場幼獅段', k: 7.5, lanes: 2 },
+          { name: '翠峰管制站', k: 18.0, lanes: 1 },
+          { name: '昆陽停車場', k: 29.5, lanes: 1 },
+          { name: '武嶺 (公路最高點 3275m)', k: 31.5, lanes: 1 },
+          { name: '合歡山遊客中心', k: 33.0, lanes: 1 },
+          { name: '大禹嶺終點 (接台8)', k: 41.5, lanes: 1 }
+        ]
+      },
+      {
+        id: 'provincial-26',
+        type: 'provincial',
+        num: '台26',
+        name: '南部濱海公路 (楓港-達仁)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '順向 (往墾丁/鵝鑾鼻)' },
+          { key: 'N', name: '逆向 (往車城/楓港)' }
+        ],
+        stations: [
+          { name: '楓港起點 (接台1/9)', k: 0.0, lanes: 2 },
+          { name: '恆春南門', k: 25.0, lanes: 2 },
+          { name: '南灣遊憩區', k: 30.5, lanes: 2 },
+          { name: '墾丁大街', k: 35.0, lanes: 2 },
+          { name: '鵝鑾鼻公園', k: 42.0, lanes: 2 }
+        ]
+      }
+    ];
+
+    /* ==========================================================================
+       2. 應用程式核心狀態
+       ========================================================================== */
+    const AppState = {
+      currentView: 'index',
+      selectedRoadId: 'freeway-5',
+      selectedDirection: 'S',
+      selectedCategory: 'all',
+      searchQuery: '',
+      isTunnelScopeOnly: false,
+      countdownSeconds: 60,
+      timerId: null
+    };
+
+    /* ==========================================================================
+       3. 數據生成與色階判定
+       ========================================================================== */
+    function generateTrafficData(road, direction) {
+      const now = new Date();
+      const stationData = [];
+
+      road.stations.forEach((st, idx) => {
+        const seed = (st.k * 7 + idx * 13 + now.getMinutes()) % 100;
+        let statusType = 'fresh';
+        if (seed === 97) statusType = 'missing';
+        else if (seed > 91) statusType = 'stale';
+
+        const collectDate = new Date(now.getTime());
+        if (statusType === 'stale') {
+          collectDate.setMinutes(now.getMinutes() - 4 - Math.floor(Math.random() * 5));
+        } else {
+          collectDate.setSeconds(now.getSeconds() - Math.floor(Math.random() * 45));
+        }
+
+        const lanes = [];
+        for (let l = 1; l <= st.lanes; l++) {
+          let baseSpeed = 85;
+          if (st.isTunnel) {
+            baseSpeed = (direction === 'N') ? 42 : 58;
+            if (l === 1) baseSpeed -= 5;
+          } else if (road.id === 'freeway-1' && (st.name.includes('五股') || st.name.includes('林口'))) {
+            baseSpeed = 48;
+          } else if (road.id === 'provincial-14a') {
+            baseSpeed = 35;
+          }
+
+          let laneSpeed = (statusType === 'missing') ? -1 : Math.max(15, Math.min(110, Math.round(baseSpeed + ((seed * l) % 25) - 10)));
+          lanes.push({
+            laneNo: l,
+            laneName: (l === 1 ? '內側' : (l === st.lanes ? '外側' : `中${l-1}`)),
+            speed: laneSpeed
+          });
+        }
+
+        const validLanes = lanes.filter(l => l.speed > 0);
+        const avgSpeed = validLanes.length > 0 ? Math.round(validLanes.reduce((a, b) => a + b.speed, 0) / validLanes.length) : -1;
+
+        stationData.push({
+          station: st,
+          avgSpeed: avgSpeed,
+          statusType: statusType,
+          collectTime: formatShortTime(collectDate),
+          lanes: lanes
+        });
+      });
+
+      const incidents = [];
+      if (road.id === 'freeway-5') {
+        if (direction === 'S') {
+          incidents.push({ type: 'warn', text: '國5 南下 15k-20k (雪隧前半段) 車多慢行' });
+        } else {
+          incidents.push({ type: 'alert', text: '國5 北上 28k (頭城端洞口) 回堵約 2.5km' });
+        }
+      } else if (road.id === 'freeway-1' && direction === 'S') {
+        incidents.push({ type: 'warn', text: '國1 南下 41.5k 林口爬坡段車多' });
+      }
+
+      return {
+        roadId: road.id,
+        direction: direction,
+        fetchTime: formatShortTime(now),
+        incidents: incidents,
+        stations: stationData
+      };
+    }
+
+    function formatShortTime(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function getSpeedColor(speed) {
+      if (speed < 0) return 'var(--speed-gray)';
+      if (speed >= 80) return 'var(--speed-green)';
+      if (speed >= 60) return 'var(--speed-yellow)';
+      if (speed >= 40) return 'var(--speed-orange)';
+      if (speed >= 20) return 'var(--speed-red)';
+      return 'var(--speed-purple)';
+    }
+
+    /* ==========================================================================
+       4. 視圖：極簡高密度首頁 (Dense Index View - 一屏盡覽)
+       ========================================================================== */
+    function renderIndexView() {
+      AppState.currentView = 'index';
+      const container = document.getElementById('appContainer');
+
+      const filteredRoads = ROADS_DATABASE.filter(r => {
+        const matchesCat = (AppState.selectedCategory === 'all') || (r.type === AppState.selectedCategory);
+        const q = AppState.searchQuery.trim().toLowerCase();
+        const matchesQ = !q || r.num.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
+        return matchesCat && matchesQ;
+      });
+
+      let html = `
+        <!-- 雪隧一鍵直達精簡列 -->
+        <div class="tunnel-quick-bar" onclick="openTunnelDirectView()">
+          <div class="tunnel-quick-left">
+            <span>🏔️ 國5・雪山隧道專區</span>
+            <span class="tunnel-quick-badge">分道時速</span>
+          </div>
+          <span class="tunnel-quick-arrow">進入雪隧 →</span>
+        </div>
+
+        <!-- 緊湊搜尋與標籤列 -->
+        <div class="search-row">
+          <input type="text" class="search-input" id="roadSearchInput" 
+                 placeholder="🔍 搜尋編號/地名 (如 國1、台61、台9)..." 
+                 value="${AppState.searchQuery}" 
+                 oninput="handleSearchInput(this.value)">
+        </div>
+
+        <div class="tab-scroll">
+          <button class="tab-item ${AppState.selectedCategory === 'all' ? 'active' : ''}" onclick="setCategory('all')">全部 (${ROADS_DATABASE.length})</button>
+          <button class="tab-item ${AppState.selectedCategory === 'freeway' ? 'active' : ''}" onclick="setCategory('freeway')">國道 (${ROADS_DATABASE.filter(r=>r.type==='freeway').length})</button>
+          <button class="tab-item ${AppState.selectedCategory === 'express' ? 'active' : ''}" onclick="setCategory('express')">快速 (${ROADS_DATABASE.filter(r=>r.type==='express').length})</button>
+          <button class="tab-item ${AppState.selectedCategory === 'provincial' ? 'active' : ''}" onclick="setCategory('provincial')">省道 (${ROADS_DATABASE.filter(r=>r.type==='provincial').length})</button>
+        </div>
+
+        <!-- 高密度道路按鈕網格 (手機 3 欄 / 桌面多欄) -->
+        <div class="road-dense-grid">
+      `;
+
+      if (filteredRoads.length === 0) {
+        html += `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 30px 0;">查無符合「${AppState.searchQuery}」的道路</div>`;
+      } else {
+        filteredRoads.forEach(road => {
+          html += `
+            <div class="road-dense-tile" onclick="openRoadDetail('${road.id}')">
+              <div class="tile-top">
+                <span class="tile-shield ${road.type}">${road.num}</span>
+                <span class="tile-pts">${road.stations.length}站</span>
+              </div>
+              <div class="tile-name">${road.name.split(' ')[0]}</div>
+            </div>
+          `;
+        });
+      }
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       5. 視圖：極簡單行路況內頁 (Compact Strip View - 最少滾動)
+       ========================================================================== */
+    function renderRoadDetailView() {
+      const road = ROADS_DATABASE.find(r => r.id === AppState.selectedRoadId);
+      if (!road) return renderIndexView();
+
+      const container = document.getElementById('appContainer');
+      const traffic = generateTrafficData(road, AppState.selectedDirection);
+
+      let displayStations = traffic.stations;
+      if (road.hasTunnelMode && AppState.isTunnelScopeOnly) {
+        displayStations = traffic.stations.filter(s => s.station.isTunnel || s.station.name.includes('坪林') || s.station.name.includes('頭城'));
+      }
+
+      if (AppState.selectedDirection === 'N' || AppState.selectedDirection === 'W') {
+        displayStations = [...displayStations].reverse();
+      }
+
+      let html = `
+        <!-- 頂部控制列 (極致精簡) -->
+        <div class="road-ctrl-card">
+          <div class="ctrl-top-row">
+            <button class="back-link" onclick="renderIndexView()">← 首頁</button>
+            <div class="ctrl-road-title">
+              <span class="tile-shield ${road.type}" style="font-size: 0.85rem;">${road.num}</span>
+              <span>${road.name.split(' (')[0]}</span>
+            </div>
+            <span style="font-size: 0.72rem; color: var(--text-dim); font-family: monospace;">${traffic.fetchTime}</span>
+          </div>
+
+          <div class="ctrl-dir-group">
+            <div class="seg-btn-group">
+              ${road.directions.map(dir => `
+                <button class="seg-btn ${AppState.selectedDirection === dir.key ? 'active' : ''}" 
+                        onclick="setDirection('${dir.key}')">
+                  ${dir.name}
+                </button>
+              `).join('')}
+            </div>
+
+            ${road.hasTunnelMode ? `
+              <div class="seg-btn-group">
+                <button class="seg-btn ${!AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(false)">全線</button>
+                <button class="seg-btn ${AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(true)">🏔️ 雪隧</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      // 事件警示 (單行)
+      if (traffic.incidents && traffic.incidents.length > 0) {
+        traffic.incidents.forEach(inc => {
+          html += `<div class="incident-strip ${inc.type === 'warn' ? 'warn' : ''}">⚠️ ${inc.text}</div>`;
+        });
+      }
+
+      // 若為國5/雪隧，動態計算雪隧內部雙車道平均時速與進洞推薦卡片
+      if (road.hasTunnelMode) {
+        const tunnelSts = traffic.stations.filter(s => s.station.isTunnel);
+        if (tunnelSts.length > 0) {
+          const l1Speeds = tunnelSts.map(s => s.lanes[0] ? s.lanes[0].speed : -1).filter(v => v > 0);
+          const l2Speeds = tunnelSts.map(s => s.lanes[1] ? s.lanes[1].speed : -1).filter(v => v > 0);
+          const avgL1 = l1Speeds.length > 0 ? Math.round(l1Speeds.reduce((a,b)=>a+b,0)/l1Speeds.length) : -1;
+          const avgL2 = l2Speeds.length > 0 ? Math.round(l2Speeds.reduce((a,b)=>a+b,0)/l2Speeds.length) : -1;
+          const l1Time = avgL1 > 0 ? (12.9 / avgL1 * 60).toFixed(1) : '--';
+          const l2Time = avgL2 > 0 ? (12.9 / avgL2 * 60).toFixed(1) : '--';
+          const l1Color = getSpeedColor(avgL1);
+          const l2Color = getSpeedColor(avgL2);
+
+          let recText = '';
+          let recClass = '';
+          let l1Winner = false;
+          let l2Winner = false;
+
+          if (avgL1 > 0 && avgL2 > 0) {
+            const diff = avgL1 - avgL2;
+            if (diff >= 4) {
+              const saveTime = (parseFloat(l2Time) - parseFloat(l1Time)).toFixed(1);
+              recText = `👉 系統推薦：【建議走內側車道】(全線均速快 ${diff} km/h，預估省 ${saveTime} 分鐘)`;
+              recClass = 'fast';
+              l1Winner = true;
+            } else if (diff <= -4) {
+              const saveTime = (parseFloat(l1Time) - parseFloat(l2Time)).toFixed(1);
+              recText = `👉 系統推薦：【建議走外側車道】(全線均速快 ${Math.abs(diff)} km/h，預估省 ${saveTime} 分鐘)`;
+              recClass = 'fast';
+              l2Winner = true;
+            } else {
+              recText = `⚖️ 雙車道均速相當 (相差 ${Math.abs(diff)} km/h)，依現場進洞排隊車流選擇即可`;
+            }
+          }
+
+          html += `
+            <div class="tunnel-decision-card">
+              <div class="decision-header">
+                <span>🏔️ 雪山隧道 (12.9km) 全程均速與進洞決策</span>
+                <span style="font-size: 0.68rem; color: #f59e0b;">全程禁止變換車道</span>
+              </div>
+              <div class="decision-grid">
+                <div class="decision-col ${l1Winner ? 'winner' : ''}">
+                  <div class="decision-lane-title">內側車道 (快車道)</div>
+                  <div class="decision-speed" style="color: ${l1Color}">${avgL1 > 0 ? `${avgL1} <span style="font-size:0.75rem;font-weight:600;">km/h</span>` : '--'}</div>
+                  <div class="decision-time">通過約 ${l1Time} 分鐘</div>
+                </div>
+                <div class="decision-col ${l2Winner ? 'winner' : ''}">
+                  <div class="decision-lane-title">外側車道 (慢車道)</div>
+                  <div class="decision-speed" style="color: ${l2Color}">${avgL2 > 0 ? `${avgL2} <span style="font-size:0.75rem;font-weight:600;">km/h</span>` : '--'}</div>
+                  <div class="decision-time">通過約 ${l2Time} 分鐘</div>
+                </div>
+              </div>
+              ${recText ? `<div class="decision-rec-banner ${recClass}">${recText}</div>` : ''}
+            </div>
+          `;
+        }
+      }
+
+      // 極小化圖例
+      html += `
+        <div class="legend-strip">
+          <span>時速標示：</span>
+          <div class="legend-colors">
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-green)"></div> 80+</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-yellow)"></div> 60</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-orange)"></div> 40</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-red)"></div> 20</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-purple)"></div> 0-19</div>
+          </div>
+        </div>
+      `;
+
+      // 路段單行清單 (極簡高度 38px / 支援雪隧雙車道)
+      html += `<div class="strip-list">`;
+
+      displayStations.forEach(item => {
+        const speedColor = getSpeedColor(item.avgSpeed);
+        const isTunnelSpecial = road.hasTunnelMode && item.station.isTunnel;
+
+        // 若為雪隧內部站點：微觀雙車道精簡卡
+        if (isTunnelSpecial) {
+          const lane1 = item.lanes[0] || { speed: -1 };
+          const lane2 = item.lanes[1] || { speed: -1 };
+          const l1Color = getSpeedColor(lane1.speed);
+          const l2Color = getSpeedColor(lane2.speed);
+
+          html += `
+            <div class="tunnel-dual-strip">
+              <div class="tunnel-header-row">
+                <span>🏔️ ${item.station.name} (${item.station.k.toFixed(1)}k)</span>
+                <span style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">${item.collectTime}</span>
+              </div>
+              <div class="tunnel-lanes-row">
+                <div class="tunnel-lane-cell">
+                  <span class="lane-txt">內側</span>
+                  <div class="lane-num-wrap">
+                    <span class="lane-num" style="--lane-color: ${l1Color}">${lane1.speed > 0 ? lane1.speed : '--'}</span>
+                    <span style="font-size: 0.6rem; color: var(--text-dim);">km/h</span>
+                  </div>
+                </div>
+                <div class="tunnel-lane-cell">
+                  <span class="lane-txt">外側</span>
+                  <div class="lane-num-wrap">
+                    <span class="lane-num" style="--lane-color: ${l2Color}">${lane2.speed > 0 ? lane2.speed : '--'}</span>
+                    <span style="font-size: 0.6rem; color: var(--text-dim);">km/h</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          // 一般路段：單行極簡 Strip Row (最少捲動)
+          let tagHtml = '';
+          if (item.statusType === 'stale') tagHtml = `<span class="strip-tag stale">⚠️過期</span>`;
+          if (item.statusType === 'missing') tagHtml = `<span class="strip-tag missing">✕離線</span>`;
+
+          html += `
+            <div class="strip-row" style="--row-color: ${speedColor}">
+              <div class="strip-left">
+                <span class="strip-name">${item.station.name}</span>
+                <span class="strip-k">${item.station.k.toFixed(1)}k</span>
+              </div>
+              <div class="strip-right">
+                ${tagHtml}
+                <div class="strip-speed-badge">
+                  <span class="strip-speed-num">${item.avgSpeed > 0 ? item.avgSpeed : '--'}</span>
+                  <span class="strip-speed-unit">${item.avgSpeed > 0 ? 'km/h' : ''}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      });
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       6. 導航與互動邏輯
+       ========================================================================== */
+    function openRoadDetail(roadId) {
+      const road = ROADS_DATABASE.find(r => r.id === roadId);
+      if (!road) return;
+      AppState.currentView = 'road-detail';
+      AppState.selectedRoadId = roadId;
+      AppState.selectedDirection = road.defaultDirection || road.directions[0].key;
+      AppState.isTunnelScopeOnly = false;
+      renderRoadDetailView();
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    function openTunnelDirectView() {
+      AppState.currentView = 'road-detail';
+      AppState.selectedRoadId = 'freeway-5';
+      AppState.selectedDirection = 'S';
+      AppState.isTunnelScopeOnly = true;
+      renderRoadDetailView();
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    function setCategory(cat) {
+      AppState.selectedCategory = cat;
+      renderIndexView();
+    }
+
+    function handleSearchInput(val) {
+      AppState.searchQuery = val;
+      renderIndexView();
+    }
+
+    function setDirection(dir) {
+      AppState.selectedDirection = dir;
+      renderRoadDetailView();
+    }
+
+    function setTunnelScope(isTunnelOnly) {
+      AppState.isTunnelScopeOnly = isTunnelOnly;
+      renderRoadDetailView();
+    }
+
+    function manualRefresh() {
+      AppState.countdownSeconds = 60;
+      updateCountdownDisplay();
+      if (AppState.currentView === 'index') {
+        renderIndexView();
+      } else {
+        renderRoadDetailView();
+      }
+    }
+
+    function startTimer() {
+      if (AppState.timerId) clearInterval(AppState.timerId);
+      AppState.countdownSeconds = 60;
+
+      AppState.timerId = setInterval(() => {
+        AppState.countdownSeconds--;
+        if (AppState.countdownSeconds <= 0) {
+          AppState.countdownSeconds = 60;
+          if (AppState.currentView === 'index') {
+            renderIndexView();
+          } else {
+            renderRoadDetailView();
+          }
+        }
+        updateCountdownDisplay();
+      }, 1000);
+    }
+
+    function updateCountdownDisplay() {
+      const el = document.getElementById('countdownText');
+      if (el) el.textContent = `${AppState.countdownSeconds}s`;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderIndexView();
+      startTimer();
+    });
+  </script>
+</body>
+</html>
