@@ -1006,6 +1006,72 @@
         ]
       },
       {
+        id: 'express-62',
+        type: 'express',
+        num: '台62',
+        name: '萬里瑞濱線 (萬里-瑞濱)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往瑞濱/九份)' },
+          { key: 'W', name: '西向 (往萬里/金山)' }
+        ],
+        stations: [
+          { name: '萬里端', k: 0.0, lanes: 2 },
+          { name: '安樂端', k: 3.5, lanes: 2 },
+          { name: '大武崙', k: 5.0, lanes: 2 },
+          { name: '七堵交流道', k: 9.2, lanes: 2 },
+          { name: '大華系統 (接國1)', k: 12.0, lanes: 2 },
+          { name: '暖暖交流道', k: 13.5, lanes: 2 },
+          { name: '瑞芳交流道', k: 16.0, lanes: 2 },
+          { name: '瑞濱端 (接台2線)', k: 18.7, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-64',
+        type: 'express',
+        num: '台64',
+        name: '八里新店線 (八里-新店)',
+        hasTunnelMode: false,
+        defaultDirection: 'E',
+        directions: [
+          { key: 'E', name: '東向 (往中和/新店)' },
+          { key: 'W', name: '西向 (往八里/台北港)' }
+        ],
+        stations: [
+          { name: '台北港端', k: 0.0, lanes: 2 },
+          { name: '八里交流道', k: 1.2, lanes: 2 },
+          { name: '五股一交流道', k: 10.5, lanes: 2 },
+          { name: '五股二交流道', k: 11.8, lanes: 2 },
+          { name: '三重交流道', k: 14.5, lanes: 2 },
+          { name: '江子翠交流道', k: 17.5, lanes: 2 },
+          { name: '板橋交流道 (民生路)', k: 20.2, lanes: 2 },
+          { name: '中和交流道 (接國3)', k: 24.0, lanes: 2 },
+          { name: '新店端 (秀朗橋)', k: 28.3, lanes: 2 }
+        ]
+      },
+      {
+        id: 'express-65',
+        type: 'express',
+        num: '台65',
+        name: '五股土城線 (五股-土城)',
+        hasTunnelMode: false,
+        defaultDirection: 'S',
+        directions: [
+          { key: 'S', name: '南下 (往土城/國3)' },
+          { key: 'N', name: '北上 (往五股/國1)' }
+        ],
+        stations: [
+          { name: '五股端 (接國1)', k: 0.0, lanes: 2 },
+          { name: '新莊一交流道 (中正路)', k: 2.4, lanes: 2 },
+          { name: '新莊二交流道', k: 4.2, lanes: 2 },
+          { name: '板橋一交流道', k: 6.8, lanes: 2 },
+          { name: '板橋二交流道 (縣民大道)', k: 8.5, lanes: 2 },
+          { name: '土城一交流道', k: 11.4, lanes: 2 },
+          { name: '土城二交流道 (接國3)', k: 12.8, lanes: 2 }
+        ]
+      },
+      {
         id: 'express-66',
         type: 'express',
         num: '台66',
@@ -1018,7 +1084,10 @@
         ],
         stations: [
           { name: '觀音端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '新坡交流道', k: 5.0, lanes: 2 },
+          { name: '中豐交流道', k: 13.0, lanes: 2 },
           { name: '平鎮系統 (接國1)', k: 18.0, lanes: 2 },
+          { name: '平鎮三交流道', k: 20.5, lanes: 2 },
           { name: '大溪端 (接國3)', k: 27.2, lanes: 2 }
         ]
       },
@@ -1035,7 +1104,10 @@
         ],
         stations: [
           { name: '南寮端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '武陵路交流道', k: 4.8, lanes: 2 },
+          { name: '中華路交流道', k: 7.0, lanes: 2 },
           { name: '新竹系統 (經國大橋)', k: 9.6, lanes: 2 },
+          { name: '芎林交流道 (接國3)', k: 15.3, lanes: 2 },
           { name: '竹東端', k: 23.4, lanes: 2 }
         ]
       },
@@ -1052,7 +1124,10 @@
         ],
         stations: [
           { name: '後龍端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '造橋交流道', k: 6.0, lanes: 2 },
           { name: '頭屋交流道 (接國1)', k: 12.0, lanes: 2 },
+          { name: '公館交流道', k: 15.8, lanes: 2 },
+          { name: '銅鑼交流道', k: 20.5, lanes: 2 },
           { name: '汶水端 (接台3線)', k: 31.0, lanes: 2 }
         ]
       },
@@ -1070,10 +1145,14 @@
         stations: [
           { name: '快官交流道 (接國3)', k: 0.0, lanes: 3 },
           { name: '高鐵台中站', k: 4.0, lanes: 3 },
+          { name: '南屯二交流道', k: 7.0, lanes: 3 },
           { name: '西屯三 (市政路)', k: 9.8, lanes: 3 },
+          { name: '西屯一 (西屯路)', k: 12.0, lanes: 3 },
           { name: '北屯二 (中清/國1)', k: 14.5, lanes: 3 },
           { name: '潭子系統 (接國4)', k: 18.8, lanes: 3 },
+          { name: '松竹交流道', k: 22.0, lanes: 3 },
           { name: '太原交流道', k: 24.5, lanes: 3 },
+          { name: '太平交流道', k: 26.8, lanes: 3 },
           { name: '大里二交流道', k: 32.0, lanes: 3 },
           { name: '霧峰系統 (接國3)', k: 37.8, lanes: 3 }
         ]
@@ -1092,7 +1171,9 @@
         stations: [
           { name: '芳苑端 (接台61)', k: 0.0, lanes: 2 },
           { name: '埔鹽系統 (接國1)', k: 15.3, lanes: 2 },
-          { name: '八卦山隧道', k: 27.5, lanes: 2 },
+          { name: '員林交流道', k: 22.0, lanes: 2 },
+          { name: '八卦山隧道 (西口)', k: 27.5, lanes: 2 },
+          { name: '八卦山隧道 (東口)', k: 30.5, lanes: 2 },
           { name: '中興系統 (接國3)', k: 32.6, lanes: 2 }
         ]
       },
@@ -1109,7 +1190,11 @@
         ],
         stations: [
           { name: '台西端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '東勢交流道', k: 8.0, lanes: 2 },
+          { name: '元長交流道', k: 15.0, lanes: 2 },
+          { name: '虎尾交流道', k: 25.0, lanes: 2 },
           { name: '雲林系統 (接國1)', k: 30.2, lanes: 2 },
+          { name: '斗六交流道', k: 39.0, lanes: 2 },
           { name: '古坑系統 (接國3)', k: 42.8, lanes: 2 }
         ]
       },
@@ -1126,7 +1211,10 @@
         ],
         stations: [
           { name: '東石端 (接台61)', k: 0.0, lanes: 2 },
+          { name: '朴子交流道', k: 8.0, lanes: 2 },
+          { name: '鹿草交流道', k: 18.0, lanes: 2 },
           { name: '嘉義系統 (接國1)', k: 22.5, lanes: 2 },
+          { name: '水上交流道', k: 25.0, lanes: 2 },
           { name: '中埔系統 (接國3)', k: 33.9, lanes: 2 }
         ]
       },
@@ -1143,8 +1231,11 @@
         ],
         stations: [
           { name: '北門交流道 (接台61)', k: 0.0, lanes: 2 },
+          { name: '學甲交流道', k: 5.6, lanes: 2 },
           { name: '下營系統 (接國1)', k: 14.0, lanes: 2 },
+          { name: '麻豆交流道', k: 20.0, lanes: 2 },
           { name: '官田系統 (接國3)', k: 27.8, lanes: 2 },
+          { name: '頭社交流道', k: 32.5, lanes: 2 },
           { name: '玉井端 (接台3線)', k: 37.8, lanes: 2 }
         ]
       },
@@ -1160,8 +1251,11 @@
           { key: 'W', name: '西向 (往安平/台17)' }
         ],
         stations: [
-          { name: '灣裡交流道', k: 0.0, lanes: 2 },
+          { name: '灣裡交流道 (接台17)', k: 0.0, lanes: 2 },
+          { name: '台南端', k: 2.0, lanes: 2 },
           { name: '仁德系統 (接國1)', k: 8.6, lanes: 2 },
+          { name: '大潭交流道 (高鐵站)', k: 11.0, lanes: 2 },
+          { name: '歸仁交流道', k: 16.0, lanes: 2 },
           { name: '關廟系統 (接國3)', k: 18.9, lanes: 2 }
         ]
       },
@@ -1178,9 +1272,11 @@
         ],
         stations: [
           { name: '五甲系統 (接國1)', k: 0.0, lanes: 2 },
+          { name: '鳳山交流道', k: 2.2, lanes: 2 },
           { name: '大寮交流道', k: 7.0, lanes: 2 },
           { name: '萬丹交流道 (萬大橋)', k: 12.5, lanes: 2 },
-          { name: '竹田系統 (接國3)', k: 21.0, lanes: 2 }
+          { name: '竹田系統 (接國3)', k: 21.0, lanes: 2 },
+          { name: '竹田端 (接台1線)', k: 22.3, lanes: 2 }
         ]
       },
 
@@ -1198,11 +1294,15 @@
         ],
         stations: [
           { name: '台北忠孝西路起點', k: 0.0, lanes: 3 },
+          { name: '新北三重重新路', k: 4.5, lanes: 3 },
           { name: '新莊中正路', k: 10.2, lanes: 3 },
+          { name: '桃園龜山萬壽路', k: 18.5, lanes: 2 },
           { name: '中壢延平路', k: 32.0, lanes: 2 },
           { name: '新竹中華路', k: 72.0, lanes: 2 },
+          { name: '苗栗頭份自強路', k: 90.5, lanes: 2 },
           { name: '台中清水中山路', k: 152.0, lanes: 2 },
           { name: '彰化市中山路', k: 185.0, lanes: 2 },
+          { name: '嘉義市博愛路', k: 260.0, lanes: 2 },
           { name: '台南市中華路', k: 325.0, lanes: 2 },
           { name: '高雄市民族路', k: 370.0, lanes: 3 },
           { name: '屏東楓港終點', k: 461.6, lanes: 2 }
@@ -1221,7 +1321,10 @@
         ],
         stations: [
           { name: '台北市行政院起點', k: 0.0, lanes: 3 },
+          { name: '民權西路口', k: 3.2, lanes: 3 },
           { name: '三重三和路', k: 6.5, lanes: 2 },
+          { name: '新莊思源路口', k: 12.0, lanes: 2 },
+          { name: '龜山萬壽路', k: 20.0, lanes: 2 },
           { name: '桃園復興路終點', k: 27.4, lanes: 2 }
         ]
       },
@@ -1239,10 +1342,16 @@
         stations: [
           { name: '關渡大橋起點', k: 0.0, lanes: 2 },
           { name: '淡水捷運站前', k: 5.0, lanes: 2 },
+          { name: '三芝白沙灣', k: 23.0, lanes: 2 },
+          { name: '石門富貴角', k: 29.5, lanes: 2 },
           { name: '金山中角灣', k: 40.0, lanes: 2 },
+          { name: '萬里野柳', k: 49.0, lanes: 2 },
           { name: '基隆外木山', k: 56.5, lanes: 2 },
+          { name: '基隆海洋大學', k: 67.0, lanes: 2 },
           { name: '瑞芳水湳洞', k: 78.5, lanes: 2 },
+          { name: '鼻頭角', k: 84.0, lanes: 2 },
           { name: '貢寮福隆', k: 100.5, lanes: 2 },
+          { name: '頭城大里天公廟', k: 118.0, lanes: 2 },
           { name: '頭城烏石港', k: 135.0, lanes: 2 },
           { name: '蘇澳港終點', k: 167.7, lanes: 2 }
         ]
@@ -1259,12 +1368,19 @@
           { key: 'N', name: '北上 (往台北板橋)' }
         ],
         stations: [
+          { name: '台北市行政院起點', k: 0.0, lanes: 3 },
           { name: '板橋文化路', k: 5.2, lanes: 3 },
+          { name: '三峽大埔', k: 25.0, lanes: 2 },
           { name: '大溪老街周邊', k: 37.0, lanes: 2 },
+          { name: '關西市區', k: 60.0, lanes: 2 },
           { name: '竹東市區', k: 75.0, lanes: 2 },
+          { name: '北埔老街', k: 83.0, lanes: 2 },
+          { name: '苗栗獅潭', k: 115.0, lanes: 2 },
           { name: '大湖草莓園區', k: 130.0, lanes: 2 },
+          { name: '台中東勢大橋', k: 158.0, lanes: 2 },
           { name: '南投草屯中正路', k: 205.0, lanes: 2 },
           { name: '嘉義中埔 (阿婆彎)', k: 310.0, lanes: 2 },
+          { name: '台南楠西梅嶺口', k: 365.0, lanes: 2 },
           { name: '屏東市和平路終點', k: 436.8, lanes: 2 }
         ]
       },
@@ -1284,6 +1400,8 @@
           { name: '角板山商圈', k: 16.5, lanes: 2 },
           { name: '巴陵大橋 (拉拉山)', k: 47.0, lanes: 2 },
           { name: '明池森林遊樂區', k: 65.5, lanes: 1 },
+          { name: '棲蘭百韜橋 (接台7甲)', k: 86.0, lanes: 2 },
+          { name: '宜蘭員山', k: 118.0, lanes: 2 },
           { name: '壯圍終點 (接台2)', k: 128.5, lanes: 2 }
         ]
       },
@@ -1300,9 +1418,11 @@
         ],
         stations: [
           { name: '百韜橋起點 (接台7)', k: 0.0, lanes: 2 },
+          { name: '四季部落', k: 18.0, lanes: 2 },
           { name: '南山部落', k: 30.0, lanes: 2 },
           { name: '思源埡口 (宜中交界)', k: 45.0, lanes: 1 },
           { name: '武陵農場入口', k: 53.0, lanes: 2 },
+          { name: '環山部落', k: 61.5, lanes: 2 },
           { name: '梨山終點 (接台8)', k: 73.8, lanes: 2 }
         ]
       },
@@ -1320,6 +1440,7 @@
         stations: [
           { name: '東勢起點', k: 0.0, lanes: 2 },
           { name: '谷關風景區', k: 34.0, lanes: 2 },
+          { name: '德基水庫段', k: 62.0, lanes: 1 },
           { name: '梨山 (接台7甲)', k: 82.0, lanes: 2 },
           { name: '大禹嶺 (接台14甲)', k: 112.0, lanes: 1 },
           { name: '天祥遊憩區', k: 169.0, lanes: 2 },
@@ -1338,14 +1459,20 @@
           { key: 'N', name: '北上 (往台北/新店)' }
         ],
         stations: [
+          { name: '台北行政院起點', k: 0.0, lanes: 3 },
           { name: '新店北宜公路起點', k: 12.0, lanes: 2 },
+          { name: '石碇小格頭', k: 24.5, lanes: 2 },
           { name: '坪林市區 (接國5)', k: 38.0, lanes: 2 },
+          { name: '北宜九彎十八拐', k: 56.0, lanes: 2 },
           { name: '礁溪溫泉區', k: 68.0, lanes: 2 },
           { name: '蘇澳蘇花改入口', k: 104.0, lanes: 2 },
           { name: '東澳隧道', k: 114.0, lanes: 2 },
+          { name: '南澳市區', k: 128.0, lanes: 2 },
           { name: '和平谷風隧道', k: 142.0, lanes: 2 },
+          { name: '花蓮新城', k: 175.0, lanes: 2 },
           { name: '花蓮市中正路', k: 190.0, lanes: 3 },
           { name: '台東池上伯朗大道', k: 310.0, lanes: 2 },
+          { name: '台東市更生路', k: 365.0, lanes: 2 },
           { name: '草埔森永隧道 (南迴改)', k: 432.0, lanes: 2 },
           { name: '屏東楓港終點', k: 453.9, lanes: 2 }
         ]
@@ -1364,10 +1491,13 @@
         stations: [
           { name: '霧社起點 (接台14)', k: 0.0, lanes: 2 },
           { name: '清境農場幼獅段', k: 7.5, lanes: 2 },
+          { name: '清境小瑞士花園', k: 9.5, lanes: 2 },
           { name: '翠峰管制站', k: 18.0, lanes: 1 },
+          { name: '鳶峰觀景台', k: 24.0, lanes: 1 },
           { name: '昆陽停車場', k: 29.5, lanes: 1 },
           { name: '武嶺 (公路最高點 3275m)', k: 31.5, lanes: 1 },
           { name: '合歡山遊客中心', k: 33.0, lanes: 1 },
+          { name: '小風口停車場', k: 36.5, lanes: 1 },
           { name: '大禹嶺終點 (接台8)', k: 41.5, lanes: 1 }
         ]
       },
@@ -1384,10 +1514,12 @@
         ],
         stations: [
           { name: '楓港起點 (接台1/9)', k: 0.0, lanes: 2 },
+          { name: '車城福安宮口', k: 16.0, lanes: 2 },
           { name: '恆春南門', k: 25.0, lanes: 2 },
           { name: '南灣遊憩區', k: 30.5, lanes: 2 },
           { name: '墾丁大街', k: 35.0, lanes: 2 },
-          { name: '鵝鑾鼻公園', k: 42.0, lanes: 2 }
+          { name: '鵝鑾鼻公園', k: 42.0, lanes: 2 },
+          { name: '佳樂水風景區', k: 51.5, lanes: 2 }
         ]
       }
     ];
