@@ -396,6 +396,19 @@
     /* ==========================================================================
        4. 內頁：極簡單行即時路況 (Compact Strip View)
        ========================================================================== */
+    .detail-sticky-panel {
+      position: sticky;
+      top: 44px;
+      z-index: 90;
+      background: rgba(11, 15, 25, 0.98);
+      backdrop-filter: blur(12px);
+      padding-top: 4px;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
     .road-ctrl-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -641,9 +654,62 @@
       font-size: 0.8rem;
       font-weight: 700;
       color: var(--text-main);
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* 系統交流道交會路網快速跳轉標籤 */
+    .jct-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 0.64rem;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 3px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      vertical-align: middle;
+      line-height: 1.2;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    .jct-link-btn:hover {
+      transform: translateY(-1px) scale(1.04);
+      filter: brightness(1.25);
+    }
+
+    .jct-link-btn:active {
+      transform: scale(0.96);
+    }
+
+    .jct-link-btn.freeway {
+      background: rgba(21, 128, 61, 0.25);
+      border: 1px solid #16a34a;
+      color: #4ade80;
+    }
+
+    .jct-link-btn.express {
+      background: rgba(185, 28, 28, 0.25);
+      border: 1px solid #dc2626;
+      color: #f87171;
+    }
+
+    .jct-link-btn.provincial {
+      background: rgba(2, 132, 199, 0.25);
+      border: 1px solid #0284c7;
+      color: #38bdf8;
+    }
+
+    .jct-link-icon {
+      font-size: 0.58rem;
+      opacity: 0.85;
     }
 
     .strip-right {
@@ -4972,6 +5038,61 @@
       return 'var(--speed-purple)';
     }
 
+    /**
+     * 解析交流道/系統交流道名稱並自動掛載交會道路之快速跳轉標籤 (JCT Quick Link)
+     * @param {string} rawName 測站原始名稱 (例: "大華系統 (接台62)", "五股交流道 (接台64/65)", "霧峰系統 (接國6/台74)")
+     * @param {boolean} isCurrentGps 是否為當前 GPS 定位測站
+     */
+    function renderStationNameHTML(rawName, isCurrentGps) {
+      if (!rawName) return '';
+
+      // 檢查是否包含 (接...) 或 (轉...)
+      const match = rawName.match(/^(.+?)\s*\((?:接|轉)(.+?)\)$/);
+      
+      let baseName = rawName;
+      let jctBadgesHTML = '';
+
+      if (match) {
+        baseName = match[1].trim();
+        const targetsStr = match[2].trim();
+
+        // 支援多交會路線拆分 (例: "台64/65", "國6/台74", "台74/台3")
+        const rawTokens = targetsStr.split(/[/,、與\s]+/).filter(Boolean);
+        let prefix = '';
+
+        rawTokens.forEach(token => {
+          let numToken = token;
+          // 若為 "65" 且前一個為 "台64"，自動補齊前綴 "台"
+          if (/^\d+[A-Za-z甲乙]?$/.test(token) && prefix) {
+            numToken = prefix + token;
+          } else if (token.startsWith('台') || token.startsWith('國')) {
+            prefix = token.slice(0, 1) === '台' ? '台' : '國';
+          }
+
+          // 清理 "線" 字尾 (如 台3線 -> 台3)
+          const cleanNum = numToken.replace(/線$/, '');
+
+          // 從資料庫尋找匹配道路
+          const targetRoad = ROADS_DATABASE.find(r => r.num === cleanNum || r.num === numToken);
+
+          if (targetRoad) {
+            jctBadgesHTML += `
+              <span class="jct-link-btn ${targetRoad.type}" 
+                    onclick="event.stopPropagation(); openRoadDetail('${targetRoad.id}')" 
+                    title="快速切換至 ${targetRoad.num} ${targetRoad.name.split(' (')[0]}">
+                接 ${targetRoad.num} <span class="jct-link-icon">↗</span>
+              </span>
+            `;
+          } else {
+            jctBadgesHTML += `<span style="font-size: 0.68rem; color: var(--text-dim); margin-left: 4px;">(${numToken})</span>`;
+          }
+        });
+      }
+
+      const gpsPill = isCurrentGps ? '<span class="gps-current-pill">📍 目前位置</span>' : '';
+      return `${baseName}${jctBadgesHTML}${gpsPill}`;
+    }
+
     /* ==========================================================================
        5. 視圖：首頁 (Dense Index View)
        ========================================================================== */
@@ -5095,42 +5216,43 @@
       }
 
       let html = `
-        <!-- 頂部控制列 (極致精簡) -->
-        <div class="road-ctrl-card">
-          <div class="ctrl-top-row">
-            <button class="back-link" onclick="renderIndexView()">← 首頁</button>
-            <div class="ctrl-road-title">
-              <span class="tile-shield ${road.type}" style="font-size: 0.85rem;">${road.num}</span>
-              <span>${road.name.split(' (')[0]}</span>
-            </div>
-            <span style="font-size: 0.72rem; color: var(--text-dim); font-family: monospace;">${traffic.fetchTime}</span>
-          </div>
-
-          <div class="ctrl-dir-group">
-            <div class="seg-btn-group">
-              ${road.directions.map(dir => `
-                <button class="seg-btn ${AppState.selectedDirection === dir.key ? 'active' : ''}" 
-                        onclick="setDirection('${dir.key}')">
-                  ${dir.name}
-                </button>
-              `).join('')}
+        <div class="detail-sticky-panel">
+          <!-- 頂部控制列 (極致精簡) -->
+          <div class="road-ctrl-card">
+            <div class="ctrl-top-row">
+              <button class="back-link" onclick="renderIndexView()">← 首頁</button>
+              <div class="ctrl-road-title">
+                <span class="tile-shield ${road.type}" style="font-size: 0.85rem;">${road.num}</span>
+                <span>${road.name.split(' (')[0]}</span>
+              </div>
+              <span style="font-size: 0.72rem; color: var(--text-dim); font-family: monospace;">${traffic.fetchTime}</span>
             </div>
 
-            ${road.hasTunnelMode ? `
+            <div class="ctrl-dir-group">
               <div class="seg-btn-group">
-                <button class="seg-btn ${!AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(false)">全線</button>
-                <button class="seg-btn ${AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(true)">🏔️ 雪隧</button>
+                ${road.directions.map(dir => `
+                  <button class="seg-btn ${AppState.selectedDirection === dir.key ? 'active' : ''}" 
+                          onclick="setDirection('${dir.key}')">
+                    ${dir.name}
+                  </button>
+                `).join('')}
               </div>
-            ` : ''}
 
-            ${AppState.userLocation ? `
-              <div class="seg-btn-group">
-                <button class="seg-btn ${!AppState.forwardOnlyMode ? 'active' : ''}" onclick="setForwardOnlyMode(false)">🌐 全線 (置中)</button>
-                <button class="seg-btn ${AppState.forwardOnlyMode ? 'active' : ''}" onclick="setForwardOnlyMode(true)">➡️ 僅看前方</button>
-              </div>
-            ` : ''}
+              ${road.hasTunnelMode ? `
+                <div class="seg-btn-group">
+                  <button class="seg-btn ${!AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(false)">全線</button>
+                  <button class="seg-btn ${AppState.isTunnelScopeOnly ? 'active' : ''}" onclick="setTunnelScope(true)">🏔️ 雪隧</button>
+                </div>
+              ` : ''}
+
+              ${AppState.userLocation ? `
+                <div class="seg-btn-group">
+                  <button class="seg-btn ${!AppState.forwardOnlyMode ? 'active' : ''}" onclick="setForwardOnlyMode(false)">🌐 全線 (置中)</button>
+                  <button class="seg-btn ${AppState.forwardOnlyMode ? 'active' : ''}" onclick="setForwardOnlyMode(true)">➡️ 僅看前方</button>
+                </div>
+              ` : ''}
+            </div>
           </div>
-        </div>
       `;
 
       // GPS 前後出口速覽脈絡卡
@@ -5149,7 +5271,7 @@
               <!-- 前一出口 -->
               <div class="gps-nav-node">
                 <div class="gps-nav-label">前一站 (${AppState.selectedDirection === 'S' || AppState.selectedDirection === 'E' ? '北側/上游' : '南側/上游'})</div>
-                <div class="gps-nav-name">${prevStation ? prevStation.station.name.split(' (')[0] : '路線起點'}</div>
+                <div class="gps-nav-name">${prevStation ? renderStationNameHTML(prevStation.station.name, false) : '路線起點'}</div>
                 <div class="gps-nav-speed" style="color: ${prevStation ? getSpeedColor(prevStation.avgSpeed) : 'var(--text-dim)'}">
                   ${prevStation ? (prevStation.avgSpeed > 0 ? `${prevStation.avgSpeed} km/h` : '--') : '--'}
                 </div>
@@ -5158,7 +5280,7 @@
               <!-- 目前所在 -->
               <div class="gps-nav-node active">
                 <div class="gps-nav-label" style="color: #60a5fa; font-weight: 700;">📍 當前交流道</div>
-                <div class="gps-nav-name" style="color: #60a5fa;">${currentStation.station.name.split(' (')[0]}</div>
+                <div class="gps-nav-name" style="color: #60a5fa;">${renderStationNameHTML(currentStation.station.name, false)}</div>
                 <div class="gps-nav-speed" style="color: ${getSpeedColor(currentStation.avgSpeed)}">
                   ${currentStation.avgSpeed > 0 ? `${currentStation.avgSpeed} km/h` : '--'}
                 </div>
@@ -5167,7 +5289,7 @@
               <!-- 後一出口 -->
               <div class="gps-nav-node">
                 <div class="gps-nav-label">下一站 (${AppState.selectedDirection === 'S' || AppState.selectedDirection === 'E' ? '即將抵達' : '即將抵達'})</div>
-                <div class="gps-nav-name">${nextStation ? nextStation.station.name.split(' (')[0] : '路線終點'}</div>
+                <div class="gps-nav-name">${nextStation ? renderStationNameHTML(nextStation.station.name, false) : '路線終點'}</div>
                 <div class="gps-nav-speed" style="color: ${nextStation ? getSpeedColor(nextStation.avgSpeed) : 'var(--text-dim)'}">
                   ${nextStation ? (nextStation.avgSpeed > 0 ? `${nextStation.avgSpeed} km/h` : '--') : '--'}
                 </div>
@@ -5245,14 +5367,15 @@
 
       // 極小化圖例
       html += `
-        <div class="legend-strip">
-          <span>時速標示：</span>
-          <div class="legend-colors">
-            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-green)"></div> 80+</div>
-            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-yellow)"></div> 60</div>
-            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-orange)"></div> 40</div>
-            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-red)"></div> 20</div>
-            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-purple)"></div> 0-19</div>
+          <div class="legend-strip">
+            <span>時速標示：</span>
+            <div class="legend-colors">
+              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-green)"></div> 80+</div>
+              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-yellow)"></div> 60</div>
+              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-orange)"></div> 40</div>
+              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-red)"></div> 20</div>
+              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-purple)"></div> 0-19</div>
+            </div>
           </div>
         </div>
       `;
@@ -5275,7 +5398,7 @@
           html += `
             <div class="tunnel-dual-strip ${isCurrentGps ? 'is-current-gps-station' : ''}" ${isCurrentGps ? 'id="currentGpsStationRow"' : ''}>
               <div class="tunnel-header-row">
-                <span>🏔️ ${item.station.name} (${item.station.k.toFixed(1)}k) ${isCurrentGps ? '<span class="gps-current-pill">📍 目前位置</span>' : ''}</span>
+                <span>🏔️ ${renderStationNameHTML(item.station.name, isCurrentGps)} (${item.station.k.toFixed(1)}k)</span>
                 <span style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">${item.collectTime}</span>
               </div>
               <div class="tunnel-lanes-row">
@@ -5296,7 +5419,7 @@
             <div class="station-strip ${isCurrentGps ? 'is-current-gps-station' : ''}" ${isCurrentGps ? 'id="currentGpsStationRow"' : ''}>
               <div class="strip-left">
                 <span class="strip-k">${item.station.k.toFixed(1)}k</span>
-                <span class="strip-name">${item.station.name} ${isCurrentGps ? '<span class="gps-current-pill">📍 目前位置</span>' : ''}</span>
+                <span class="strip-name">${renderStationNameHTML(item.station.name, isCurrentGps)}</span>
               </div>
 
               <div class="strip-right">
