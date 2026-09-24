@@ -159,6 +159,49 @@
       transform: scale(0.96);
     }
 
+    .btn-font-toggle {
+      background: var(--bg-surface);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      white-space: nowrap;
+    }
+
+    .btn-font-toggle:active {
+      transform: scale(0.96);
+    }
+
+    /* 3 階字體縮放 (支援車載與手機架遠距清晰檢視) */
+    html[data-font-size="large"] {
+      font-size: 18px;
+    }
+    html[data-font-size="large"] .strip-speed {
+      font-size: 1.25rem !important;
+    }
+    html[data-font-size="large"] .strip-name {
+      font-size: 0.95rem !important;
+    }
+
+    html[data-font-size="xlarge"] {
+      font-size: 20.5px;
+    }
+    html[data-font-size="xlarge"] .strip-speed {
+      font-size: 1.45rem !important;
+    }
+    html[data-font-size="xlarge"] .strip-name {
+      font-size: 1.05rem !important;
+    }
+    html[data-font-size="xlarge"] .strip-item {
+      padding: 8px 10px !important;
+    }
+
     /* 主容器 */
     main {
       max-width: 900px;
@@ -918,6 +961,9 @@
       </button>
 
       <div class="header-right">
+        <button class="btn-font-toggle" onclick="toggleFontSize()" title="切換字體大小 (標準 / 大字 / 特大字)">
+          🔤 <span id="fontSizeLabel">標準</span>
+        </button>
         <div id="tdxStatusBadge" class="timer-pill" style="border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399;" title="TDX 即時路況數據連線狀態">
           <div class="timer-dot" style="background: #10b981;"></div>
           <span id="tdxStatusText">TDX 連線中</span>
@@ -5824,7 +5870,37 @@
       if (el) el.textContent = `${AppState.countdownSeconds}s`;
     }
 
+    /* ==========================================================================
+       7. 字體大小調節與 PWA 車載優化模組
+       ========================================================================== */
+    const FONT_SIZES = ['normal', 'large', 'xlarge'];
+    const FONT_LABELS = { normal: '標準', large: '大字', xlarge: '特大' };
+
+    function initFontSize() {
+      const saved = localStorage.getItem('traffic_font_size') || 'normal';
+      applyFontSize(saved);
+    }
+
+    function toggleFontSize() {
+      const current = localStorage.getItem('traffic_font_size') || 'normal';
+      const nextIdx = (FONT_SIZES.indexOf(current) + 1) % FONT_SIZES.length;
+      const nextSize = FONT_SIZES[nextIdx];
+      applyFontSize(nextSize);
+    }
+
+    function applyFontSize(size) {
+      localStorage.setItem('traffic_font_size', size);
+      if (size === 'normal') {
+        document.documentElement.removeAttribute('data-font-size');
+      } else {
+        document.documentElement.setAttribute('data-font-size', size);
+      }
+      const label = document.getElementById('fontSizeLabel');
+      if (label) label.textContent = FONT_LABELS[size] || '標準';
+    }
+
     window.addEventListener('DOMContentLoaded', async () => {
+      initFontSize();
       renderIndexView();
       startTimer();
       setupScrollProtection();
