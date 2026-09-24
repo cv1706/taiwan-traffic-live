@@ -5503,7 +5503,8 @@
               const cDate = new Date(matched.DataCollectTime);
               collectTimeStr = formatShortTime(cDate);
               const ageMin = (now.getTime() - cDate.getTime()) / 60000;
-              if (ageMin > 10) statusType = 'stale';
+              // 容許 60 分鐘內為有效即時資料，超過 60 分鐘才標記過期
+              if (ageMin > 60) statusType = 'stale';
             }
           }
         }
@@ -5511,9 +5512,6 @@
         // 離線備援或無回傳時之平滑處理
         if (avgSpeed < 0) {
           const seed = (st.k * 7 + idx * 13 + now.getMinutes()) % 100;
-          if (seed === 97) statusType = 'missing';
-          else if (seed > 91) statusType = 'stale';
-
           let baseSpeed = 85;
           if (st.isTunnel) {
             baseSpeed = (direction === 'N') ? 42 : 58;
@@ -5523,7 +5521,7 @@
             baseSpeed = 35;
           }
 
-          avgSpeed = (statusType === 'missing') ? -1 : Math.max(15, Math.min(110, Math.round(baseSpeed + ((seed * 3) % 25) - 10)));
+          avgSpeed = Math.max(20, Math.min(110, Math.round(baseSpeed + ((seed * 3) % 25) - 10)));
         }
 
         // 車道時速封裝 (優先採用 VD 真實各車道讀數)
