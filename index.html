@@ -1276,7 +1276,7 @@
   <!-- 固定頂部 Header (極度精簡) -->
   <header>
     <div class="header-inner">
-      <button class="brand-btn" onclick="toggleMainView()">
+      <button class="brand-btn" onclick="goBackHome()">
         🛣️ 即時路況 <span class="brand-tag" id="viewModeTag">地圖</span>
       </button>
 
@@ -5668,6 +5668,17 @@
       }
     }
 
+    function goBackHome() {
+      const currentMode = localStorage.getItem('traffic_view_mode') || 'map';
+      AppState.currentView = currentMode;
+      updateHeaderViewToggle();
+      if (currentMode === 'map') {
+        renderMapView();
+      } else {
+        renderIndexView();
+      }
+    }
+
     function toggleMainView() {
       if (AppState.currentView === 'map') {
         AppState.currentView = 'index';
@@ -5685,6 +5696,11 @@
 
     function flyToZone(zoneKey) {
       AppState.selectedZone = zoneKey;
+      // 瀏覽其他分區時，自動暫停 GPS 自動拉回跟隨
+      AppState.isGpsFollow = false;
+      const fab = document.getElementById('fabFollowBtn');
+      if (fab) fab.classList.remove('active');
+
       const preset = ZONE_PRESETS[zoneKey] || ZONE_PRESETS.all;
       if (AppState.mapInstance) {
         AppState.mapInstance.flyTo(preset.center, preset.zoom, { duration: 1.0 });
@@ -5839,6 +5855,13 @@
         minZoom: 6
       });
 
+      // 監聽手動拖曳與縮放事件：使用者手動瀏覽地圖時，自動暫停自動跟隨
+      map.on('dragstart', () => {
+        AppState.isGpsFollow = false;
+        const fab = document.getElementById('fabFollowBtn');
+        if (fab) fab.classList.remove('active');
+      });
+
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; CartoDB & OpenStreetMap',
         subdomains: 'abcd',
@@ -5967,7 +5990,20 @@
               lineJoin: 'round'
             }).addTo(AppState.mapLayerGroup);
 
-            polyFwd.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev));
+            polyFwd.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev), {
+              autoPan: true,
+              autoPanPadding: [30, 30]
+            });
+
+            // 點擊路段時自動平滑置中並暫停自動拉回
+            polyFwd.on('click', (e) => {
+              AppState.isGpsFollow = false;
+              const fab = document.getElementById('fabFollowBtn');
+              if (fab) fab.classList.remove('active');
+              if (AppState.mapInstance) {
+                AppState.mapInstance.panTo(e.latlng, { animate: true, duration: 0.4 });
+              }
+            });
           }
 
           // 逆向折線 (北上 / 西向 - 靠左側/內軌)
@@ -5980,7 +6016,19 @@
               lineJoin: 'round'
             }).addTo(AppState.mapLayerGroup);
 
-            polyRev.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev));
+            polyRev.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev), {
+              autoPan: true,
+              autoPanPadding: [30, 30]
+            });
+
+            polyRev.on('click', (e) => {
+              AppState.isGpsFollow = false;
+              const fab = document.getElementById('fabFollowBtn');
+              if (fab) fab.classList.remove('active');
+              if (AppState.mapInstance) {
+                AppState.mapInstance.panTo(e.latlng, { animate: true, duration: 0.4 });
+              }
+            });
           }
         }
 
@@ -5998,7 +6046,20 @@
             fillOpacity: 1
           }).addTo(AppState.mapLayerGroup);
 
-          circle.bindPopup(buildDualPopupHTML(road, st, null, dir1, dir2, spdF, spdR));
+          circle.bindPopup(buildDualPopupHTML(road, st, null, dir1, dir2, spdF, spdR), {
+            autoPan: true,
+            autoPanPadding: [30, 30]
+          });
+
+          // 點擊交流道節點時自動平滑置中
+          circle.on('click', () => {
+            AppState.isGpsFollow = false;
+            const fab = document.getElementById('fabFollowBtn');
+            if (fab) fab.classList.remove('active');
+            if (AppState.mapInstance) {
+              AppState.mapInstance.panTo([st.lat, st.lng], { animate: true, duration: 0.4 });
+            }
+          });
         });
       });
     }
@@ -6191,7 +6252,7 @@
           <!-- 頂部控制列 (極致精簡) -->
           <div class="road-ctrl-card">
             <div class="ctrl-top-row">
-              <button class="back-link" onclick="renderIndexView()">← 首頁</button>
+              <button class="back-link" onclick="goBackHome()">← 首頁</button>
               <div class="ctrl-road-title">
                 <span class="tile-shield ${road.type}" style="font-size: 0.85rem;">${road.num}</span>
                 <span>${road.name.split(' (')[0]}</span>
