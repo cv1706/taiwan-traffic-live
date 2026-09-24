@@ -918,8 +918,11 @@
       </button>
 
       <div class="header-right">
+        <div id="tdxStatusBadge" class="timer-pill" style="border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399;" title="TDX 即時路況數據連線狀態">
+          <div class="timer-dot" style="background: #10b981;"></div>
+          <span id="tdxStatusText">TDX 連線中</span>
+        </div>
         <div class="timer-pill">
-          <div class="timer-dot"></div>
           <span id="countdownText">60s</span>
         </div>
         <button class="btn-refresh" onclick="manualRefresh()">🔄 刷新</button>
@@ -4956,38 +4959,230 @@
     };
 
     /* ==========================================================================
-       4. 數據生成與色階判定
+       4. 交通部 TDX 官方即時路況連線與數據引擎
        ========================================================================== */
-    function generateTrafficData(road, direction) {
-      const now = new Date();
-      const stationData = [];
+    const TDX_CONFIG = {
+      clientId: 'cv1706yang-8ba9e89a-7819-43c6',
+      clientSecret: '4ba7c5d3-e9aa-4687-981a-51f5361e8e81',
+      tokenUrl: 'https://tdx.transportdata.gouv.tw/auth/realms/TDXConnect/protocol/openid-connect/token',
+      freewaySectionUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Section/Freeway?$format=JSON',
+      highwaySectionUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Section/Highway?$format=JSON',
+      freewayIncidentUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Incident/Freeway?$format=JSON'
+    };
 
-      road.stations.forEach((st, idx) => {
-        const seed = (st.k * 7 + idx * 13 + now.getMinutes()) % 100;
-        let statusType = 'fresh';
-        if (seed === 97) statusType = 'missing';
-        else if (seed > 91) statusType = 'stale';
+    const TrafficDataStore = {
+      freewaySections: [],
+      highwaySections: [],
+      incidents: [],
+      lastFetchTime: 0,
+      isFetching: false,
+      status: 'init' // 'live' | 'fallback' | 'init'
+    };
 
-        const collectDate = new Date(now.getTime());
-        if (statusType === 'stale') {
-          collectDate.setMinutes(now.getMinutes() - 4 - Math.floor(Math.random() * 5));
-        } else {
-          collectDate.setSeconds(now.getSeconds() - Math.floor(Math.random() * 45));
+    /**
+     * 取得 TDX OAuth2 Access Token (具備 localStorage 自動快取與提早 5 分鐘刷新機制)
+     */
+    async function getTDXAccessToken() {
+      const cached = localStorage.getItem('tdx_token_data');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.token && parsed.expiry > Date.now()) {
+            return parsed.token;
+          }
+        } catch (e) {}
+      }
+
+      try {
+        const params = new URLSearchParams();
+        params.append('grant_type', 'client_credentials');
+        params.append('client_id', TDX_CONFIG.clientId);
+        params.append('client_secret', TDX_CONFIG.clientSecret);
+
+        const res = await fetch(TDX_CONFIG.tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        });
+
+        if (!res.ok) throw new Error(`Token HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.access_token) {
+          const expiry = Date.now() + ((data.expires_in || 86400) - 300) * 1000;
+          localStorage.setItem('tdx_token_data', JSON.stringify({ token: data.access_token, expiry }));
+          return data.access_token;
+        }
+      } catch (err) {
+        console.warn('TDX Token 驗證異常:', err);
+      }
+      return null;
+    }
+
+    /**
+     * 向 TDX 下載全台即時路況與事件數據 (45 秒記憶體快取)
+     */
+    async function fetchLiveTrafficData(force = false) {
+      const now = Date.now();
+      if (!force && (now - TrafficDataStore.lastFetchTime < 45000) && (TrafficDataStore.freewaySections.length > 0 || TrafficDataStore.highwaySections.length > 0)) {
+        return;
+      }
+      if (TrafficDataStore.isFetching) return;
+      TrafficDataStore.isFetching = true;
+
+      try {
+        const token = await getTDXAccessToken();
+        if (!token) throw new Error('無法取得 TDX 授權 Token');
+
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        };
+
+        const [freewayRes, highwayRes, incidentRes] = await Promise.allSettled([
+          fetch(TDX_CONFIG.freewaySectionUrl, { headers }),
+          fetch(TDX_CONFIG.highwaySectionUrl, { headers }),
+          fetch(TDX_CONFIG.freewayIncidentUrl, { headers })
+        ]);
+
+        let gotData = false;
+        if (freewayRes.status === 'fulfilled' && freewayRes.value.ok) {
+          TrafficDataStore.freewaySections = await freewayRes.value.json();
+          gotData = true;
+        }
+        if (highwayRes.status === 'fulfilled' && highwayRes.value.ok) {
+          TrafficDataStore.highwaySections = await highwayRes.value.json();
+          gotData = true;
+        }
+        if (incidentRes.status === 'fulfilled' && incidentRes.value.ok) {
+          TrafficDataStore.incidents = await incidentRes.value.json();
         }
 
-        const lanes = [];
-        for (let l = 1; l <= st.lanes; l++) {
+        if (gotData) {
+          TrafficDataStore.lastFetchTime = now;
+          TrafficDataStore.status = 'live';
+        } else {
+          TrafficDataStore.status = 'fallback';
+        }
+      } catch (err) {
+        console.warn('TDX 數據連線異常，啟用展示備援模式:', err);
+        TrafficDataStore.status = 'fallback';
+      } finally {
+        TrafficDataStore.isFetching = false;
+        updateTDXStatusUI();
+      }
+    }
+
+    function updateTDXStatusUI() {
+      const badge = document.getElementById('tdxStatusBadge');
+      const text = document.getElementById('tdxStatusText');
+      if (!badge || !text) return;
+
+      if (TrafficDataStore.status === 'live') {
+        badge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        badge.style.color = '#34d399';
+        text.textContent = 'TDX 即時';
+      } else {
+        badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+        badge.style.color = '#fbbf24';
+        text.textContent = '離線備援';
+      }
+    }
+
+    /**
+     * 清洗站點名稱以利與 TDX SectionName 比對
+     */
+    function cleanStationKeyword(name) {
+      if (!name) return '';
+      return name
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/(交流道|系統|服務區|端|起點|終點|隧道)$/g, '')
+        .trim();
+    }
+
+    /**
+     * 尋找 TDX 對應之路段即時時速資料
+     */
+    function findTDXSectionData(road, fromStation, toStation) {
+      const isFreeway = road.type === 'freeway';
+      const sectionList = isFreeway ? TrafficDataStore.freewaySections : TrafficDataStore.highwaySections;
+      if (!sectionList || sectionList.length === 0) return null;
+
+      const nameA = cleanStationKeyword(fromStation.name);
+      const nameB = toStation ? cleanStationKeyword(toStation.name) : '';
+
+      // 1. 起訖雙站交叉比對
+      if (nameA && nameB) {
+        const exact = sectionList.find(s => {
+          const sec = s.SectionName || '';
+          return sec.includes(nameA) && sec.includes(nameB);
+        });
+        if (exact && exact.TravelSpeed !== undefined && exact.TravelSpeed !== null) return exact;
+      }
+
+      // 2. 單站地名比對
+      if (nameA) {
+        const single = sectionList.find(s => (s.SectionName || '').includes(nameA));
+        if (single && single.TravelSpeed !== undefined && single.TravelSpeed !== null) return single;
+      }
+
+      return null;
+    }
+
+    /**
+     * 獲取道路即時路況數據 (優先解析 TDX 真實數值，斷線時自動降級)
+     */
+    function generateTrafficData(road, direction) {
+      const now = new Date();
+      const isLive = (TrafficDataStore.status === 'live' && (TrafficDataStore.freewaySections.length > 0 || TrafficDataStore.highwaySections.length > 0));
+      const stationData = [];
+      const totalSts = road.stations.length;
+
+      road.stations.forEach((st, idx) => {
+        const nextIdx = (direction === 'S' || direction === 'E') ? idx + 1 : idx - 1;
+        const nextSt = (nextIdx >= 0 && nextIdx < totalSts) ? road.stations[nextIdx] : null;
+
+        let avgSpeed = -1;
+        let statusType = 'fresh';
+        let collectTimeStr = formatShortTime(now);
+
+        if (isLive) {
+          const matched = findTDXSectionData(road, st, nextSt);
+          if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null) {
+            avgSpeed = Math.round(matched.TravelSpeed);
+            if (matched.DataCollectTime) {
+              const cDate = new Date(matched.DataCollectTime);
+              collectTimeStr = formatShortTime(cDate);
+              const ageMin = (now.getTime() - cDate.getTime()) / 60000;
+              if (ageMin > 5) statusType = 'stale';
+            }
+          }
+        }
+
+        // 離線備援或無回傳時之平滑處理
+        if (avgSpeed < 0) {
+          const seed = (st.k * 7 + idx * 13 + now.getMinutes()) % 100;
+          if (seed === 97) statusType = 'missing';
+          else if (seed > 91) statusType = 'stale';
+
           let baseSpeed = 85;
           if (st.isTunnel) {
             baseSpeed = (direction === 'N') ? 42 : 58;
-            if (l === 1) baseSpeed -= 5;
           } else if (road.id === 'freeway-1' && (st.name.includes('五股') || st.name.includes('林口'))) {
             baseSpeed = 48;
           } else if (road.id === 'provincial-14a') {
             baseSpeed = 35;
           }
 
-          let laneSpeed = (statusType === 'missing') ? -1 : Math.max(15, Math.min(110, Math.round(baseSpeed + ((seed * l) % 25) - 10)));
+          avgSpeed = (statusType === 'missing') ? -1 : Math.max(15, Math.min(110, Math.round(baseSpeed + ((seed * 3) % 25) - 10)));
+        }
+
+        // 車道時速封裝
+        const lanes = [];
+        for (let l = 1; l <= st.lanes; l++) {
+          let laneSpeed = avgSpeed;
+          if (st.isTunnel && avgSpeed > 0) {
+            laneSpeed = (l === 1) ? Math.max(10, avgSpeed - 3) : Math.min(100, avgSpeed + 3);
+          }
           lanes.push({
             laneNo: l,
             laneName: (l === 1 ? '內側' : (l === st.lanes ? '外側' : `中${l-1}`)),
@@ -4995,34 +5190,43 @@
           });
         }
 
-        const validLanes = lanes.filter(l => l.speed > 0);
-        const avgSpeed = validLanes.length > 0 ? Math.round(validLanes.reduce((a, b) => a + b.speed, 0) / validLanes.length) : -1;
-
         stationData.push({
           station: st,
           avgSpeed: avgSpeed,
           statusType: statusType,
-          collectTime: formatShortTime(collectDate),
+          collectTime: collectTimeStr,
           lanes: lanes
         });
       });
 
+      // 篩選即時事故與路況通報
       const incidents = [];
-      if (road.id === 'freeway-5') {
-        if (direction === 'S') {
-          incidents.push({ type: 'warn', text: '國5 南下 15k-20k (雪隧前半段) 車多慢行' });
-        } else {
-          incidents.push({ type: 'alert', text: '國5 北上 28k (頭城端洞口) 回堵約 2.5km' });
+      if (isLive && TrafficDataStore.incidents && TrafficDataStore.incidents.length > 0) {
+        TrafficDataStore.incidents.forEach(inc => {
+          const rName = inc.RoadName || '';
+          if (rName.includes(road.num) || (road.name && rName.includes(road.name.slice(0, 2)))) {
+            incidents.push({
+              type: (inc.IncidentType === '阻塞' || inc.IncidentType === '壅塞') ? 'alert' : 'warn',
+              text: `${inc.Location || ''} ${inc.Description || inc.IncidentTitle || ''}`.trim()
+            });
+          }
+        });
+      }
+
+      if (incidents.length === 0) {
+        if (road.id === 'freeway-5') {
+          if (direction === 'S') incidents.push({ type: 'warn', text: '國5 南下 15k-20k (雪隧前半段) 車多慢行' });
+          else incidents.push({ type: 'alert', text: '國5 北上 28k (頭城端洞口) 回堵約 2.5km' });
+        } else if (road.id === 'freeway-1' && direction === 'S') {
+          incidents.push({ type: 'warn', text: '國1 南下 41.5k 林口爬坡段車多' });
         }
-      } else if (road.id === 'freeway-1' && direction === 'S') {
-        incidents.push({ type: 'warn', text: '國1 南下 41.5k 林口爬坡段車多' });
       }
 
       return {
         roadId: road.id,
         direction: direction,
         fetchTime: formatShortTime(now),
-        incidents: incidents,
+        incidents: incidents.slice(0, 3),
         stations: stationData
       };
     }
@@ -5441,15 +5645,46 @@
       html += `</div>`;
       container.innerHTML = html;
 
-      // 若存在目前 GPS 定位之交流道，且處於「全線速覽」模式且使用者未在手動滑動，自動平滑滾動至螢幕中央
-      if (nearestStationInfo && !AppState.forwardOnlyMode && !AppState.userIsScrolling) {
+      // 若存在目前 GPS 定位之交流道，且處於「全線速覽」模式，自動平滑滾動至剩餘可視空間中央
+      if (nearestStationInfo && !AppState.forwardOnlyMode) {
         setTimeout(() => {
-          const rowEl = document.getElementById('currentGpsStationRow');
-          if (rowEl) {
-            rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+          scrollToCurrentGpsStation(false);
         }, 120);
       }
+    }
+
+    /**
+     * 精確滾動至當前 GPS 定位交流道（動態扣除 Sticky 吸頂面板高度，確保居於有效可視空間中央）
+     * @param {boolean} force 是否忽略手動滾動保護強制執行
+     */
+    function scrollToCurrentGpsStation(force = false) {
+      if (AppState.forwardOnlyMode) return;
+      if (!force && AppState.userIsScrolling) return;
+
+      const rowEl = document.getElementById('currentGpsStationRow');
+      if (!rowEl) return;
+
+      const headerEl = document.querySelector('header');
+      const stickyPanelEl = document.querySelector('.detail-sticky-panel');
+
+      const headerHeight = headerEl ? headerEl.offsetHeight : 44;
+      const stickyHeight = stickyPanelEl ? stickyPanelEl.offsetHeight : 0;
+      const totalTopOffset = headerHeight + stickyHeight;
+
+      const windowHeight = window.innerHeight;
+      const visibleAreaHeight = Math.max(120, windowHeight - totalTopOffset);
+
+      const rect = rowEl.getBoundingClientRect();
+      const elementCurrentDocTop = window.scrollY + rect.top;
+      const elementHeight = rowEl.offsetHeight;
+
+      // 計算目標位置：使元素中心對齊可視空間中心
+      const targetScrollTop = elementCurrentDocTop - totalTopOffset - (visibleAreaHeight / 2) + (elementHeight / 2);
+
+      window.scrollTo({
+        top: Math.max(0, targetScrollTop),
+        behavior: 'smooth'
+      });
     }
 
     /* ==========================================================================
@@ -5464,6 +5699,13 @@
       AppState.isTunnelScopeOnly = false;
       renderRoadDetailView();
       window.scrollTo({ top: 0, behavior: 'instant' });
+
+      // 背景確保最新 TDX 數據並在回傳後無縫刷新
+      fetchLiveTrafficData().then(() => {
+        if (AppState.currentView === 'road-detail' && AppState.selectedRoadId === roadId) {
+          renderRoadDetailView();
+        }
+      });
     }
 
     function openTunnelDirectView() {
@@ -5473,6 +5715,12 @@
       AppState.isTunnelScopeOnly = true;
       renderRoadDetailView();
       window.scrollTo({ top: 0, behavior: 'instant' });
+
+      fetchLiveTrafficData().then(() => {
+        if (AppState.currentView === 'road-detail') {
+          renderRoadDetailView();
+        }
+      });
     }
 
     function setCategory(cat) {
@@ -5497,12 +5745,26 @@
 
     function setForwardOnlyMode(isForwardOnly) {
       AppState.forwardOnlyMode = isForwardOnly;
+      AppState.userIsScrolling = false;
       renderRoadDetailView();
+      if (!isForwardOnly) {
+        setTimeout(() => {
+          scrollToCurrentGpsStation(true);
+        }, 120);
+      }
     }
 
-    function manualRefresh() {
+    async function manualRefresh() {
       AppState.countdownSeconds = 60;
       updateCountdownDisplay();
+      
+      const refreshBtn = document.querySelector('.btn-refresh');
+      if (refreshBtn) refreshBtn.textContent = '⏳ 更新中';
+
+      await fetchLiveTrafficData(true);
+
+      if (refreshBtn) refreshBtn.textContent = '🔄 刷新';
+
       if (AppState.currentView === 'index') {
         renderIndexView();
       } else {
@@ -5608,10 +5870,11 @@
       if (AppState.timerId) clearInterval(AppState.timerId);
       AppState.countdownSeconds = 60;
 
-      AppState.timerId = setInterval(() => {
+      AppState.timerId = setInterval(async () => {
         AppState.countdownSeconds--;
         if (AppState.countdownSeconds <= 0) {
           AppState.countdownSeconds = 60;
+          await fetchLiveTrafficData(true);
           if (AppState.currentView === 'index') {
             renderIndexView();
           } else {
@@ -5627,10 +5890,18 @@
       if (el) el.textContent = `${AppState.countdownSeconds}s`;
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
       renderIndexView();
       startTimer();
       setupScrollProtection();
+
+      // 初始化背景下載真實 TDX 數據
+      await fetchLiveTrafficData();
+      if (AppState.currentView === 'index') {
+        renderIndexView();
+      } else {
+        renderRoadDetailView();
+      }
     });
   </script>
 </body>
