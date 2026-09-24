@@ -5085,22 +5085,56 @@
     }
 
     /**
-     * 尋找即時路況時速資料
+     * 尋找即時路況時速資料 (支援 TDX VD 里程精確幾何比對與分向比對)
      */
-    function findTDXSectionData(road, fromStation, toStation) {
+    function findTDXSectionData(road, fromStation, direction) {
       const isFreeway = road.type === 'freeway';
       const dataMap = isFreeway ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
+      if (!dataMap || Object.keys(dataMap).length === 0) return null;
 
-      const nameA = cleanStationKeyword(fromStation.name);
-      const nameB = toStation ? cleanStationKeyword(toStation.name) : '';
+      // 取得道路代號關鍵字 (例: "國1" -> "N1", "國3" -> "N3", "台61" -> "61")
+      const roadNumDigits = road.num.replace(/[^\d]/g, '');
+      const roadPrefix = isFreeway ? `N${roadNumDigits}` : `${roadNumDigits}`;
+      const dirPrefix = direction || 'N';
 
-      // 1. 若有 key map (VDID / 路段關鍵字)
-      if (dataMap && Object.keys(dataMap).length > 0) {
-        for (const [key, val] of Object.entries(dataMap)) {
-          if (nameA && key.includes(nameA)) {
-            if (!nameB || key.includes(nameB)) {
-              return { TravelSpeed: val.speed, DataCollectTime: val.time };
+      const targetK = fromStation.k;
+      let bestMatch = null;
+      let minDeltaK = 4.0; // 容許 4 公里以內的鄰近 VD 偵測點
+
+      for (const [vdId, val] of Object.entries(dataMap)) {
+        // 檢查是否包含道路與方向特徵 (例: "VD-N1-N-86.120")
+        const isRoadMatch = vdId.includes(roadPrefix) || vdId.includes(road.num);
+        const isDirMatch = vdId.includes(`-${dirPrefix}-`) || !direction;
+
+        if (isRoadMatch && isDirMatch) {
+          // 從 VDID 中提取里程數 (例: 86.120)
+          const kMatch = vdId.match(/-(\d+(\.\d+)?)-/);
+          if (kMatch && kMatch[1]) {
+            const vdK = parseFloat(kMatch[1]);
+            const delta = Math.abs(vdK - targetK);
+            if (delta < minDeltaK) {
+              minDeltaK = delta;
+              bestMatch = val;
             }
+          }
+        }
+      }
+
+      // 若里程匹配到最佳 VD
+      if (bestMatch) {
+        return {
+          TravelSpeed: bestMatch.speed,
+          DataCollectTime: bestMatch.time,
+          lanes: bestMatch.lanes
+        };
+      }
+
+      // 備用：地名關鍵字比對
+      const nameA = cleanStationKeyword(fromStation.name);
+      if (nameA) {
+        for (const [vdId, val] of Object.entries(dataMap)) {
+          if (vdId.includes(nameA)) {
+            return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
           }
         }
       }
@@ -5118,22 +5152,21 @@
       const totalSts = road.stations.length;
 
       road.stations.forEach((st, idx) => {
-        const nextIdx = (direction === 'S' || direction === 'E') ? idx + 1 : idx - 1;
-        const nextSt = (nextIdx >= 0 && nextIdx < totalSts) ? road.stations[nextIdx] : null;
-
         let avgSpeed = -1;
         let statusType = 'fresh';
         let collectTimeStr = formatShortTime(now);
+        let liveLanes = null;
 
         if (isLive) {
-          const matched = findTDXSectionData(road, st, nextSt);
+          const matched = findTDXSectionData(road, st, direction);
           if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null) {
             avgSpeed = Math.round(matched.TravelSpeed);
+            liveLanes = matched.lanes;
             if (matched.DataCollectTime) {
               const cDate = new Date(matched.DataCollectTime);
               collectTimeStr = formatShortTime(cDate);
               const ageMin = (now.getTime() - cDate.getTime()) / 60000;
-              if (ageMin > 8) statusType = 'stale';
+              if (ageMin > 10) statusType = 'stale';
             }
           }
         }
@@ -5156,11 +5189,13 @@
           avgSpeed = (statusType === 'missing') ? -1 : Math.max(15, Math.min(110, Math.round(baseSpeed + ((seed * 3) % 25) - 10)));
         }
 
-        // 車道時速封裝
+        // 車道時速封裝 (優先採用 VD 真實各車道讀數)
         const lanes = [];
         for (let l = 1; l <= st.lanes; l++) {
           let laneSpeed = avgSpeed;
-          if (st.isTunnel && avgSpeed > 0) {
+          if (liveLanes && liveLanes[l - 1] !== undefined) {
+            laneSpeed = liveLanes[l - 1];
+          } else if (st.isTunnel && avgSpeed > 0) {
             laneSpeed = (l === 1) ? Math.max(10, avgSpeed - 3) : Math.min(100, avgSpeed + 3);
           }
           lanes.push({
