@@ -10,6 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <style>
     /* ==========================================================================
@@ -28,6 +30,218 @@
       --text-dim: #64748b;
 
       --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --snow-tunnel-accent: #06b6d4;
+
+      /* 交通部高公局標準 5 階速限色標 */
+      --speed-green: #10b981;   /* 80+ km/h 順暢 */
+      --speed-yellow: #f59e0b;  /* 60-79 km/h 車多 */
+      --speed-orange: #f97316;  /* 40-59 km/h 壅塞 */
+      --speed-red: #ef4444;     /* 20-39 km/h 嚴重壅塞 */
+      --speed-purple: #8b5cf6;  /* 0-19 km/h 紫爆走走停停 */
+      --speed-gray: #475569;    /* 故障/無資料 */
+
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    /* 地圖與 HUD 專用樣式 */
+    .view-mode-toggle {
+      background: var(--bg-surface);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      font-size: 0.74rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .view-mode-toggle:active {
+      transform: scale(0.96);
+    }
+
+    #mapWrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 58px);
+      min-height: 480px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #0b0f19;
+    }
+
+    /* 分區快速導航條 */
+    .map-zone-bar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 999;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 4px;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(8px);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      scrollbar-width: none;
+    }
+    .map-zone-bar::-webkit-scrollbar { display: none; }
+
+    .zone-pill {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-sub);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .zone-pill.active {
+      background: var(--primary);
+      border-color: #60a5fa;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    }
+
+    /* 地圖右側浮動工具鈕 */
+    .map-fab-group {
+      position: absolute;
+      right: 10px;
+      bottom: 85px;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .map-fab {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .map-fab.active {
+      border-color: #3b82f6;
+      color: #60a5fa;
+      background: rgba(30, 58, 138, 0.9);
+    }
+
+    /* 行車 HUD 懸浮儀表板 */
+    .traffic-hud {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 999;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    }
+
+    .hud-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .hud-route-tag {
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hud-station-name {
+      font-size: 0.9rem;
+      font-weight: 900;
+      color: #fff;
+    }
+    .hud-station-sub {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+
+    .hud-right {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .hud-speed-num {
+      font-size: 1.5rem;
+      font-weight: 900;
+      font-family: 'Inter', monospace;
+      line-height: 1;
+      color: #34d399;
+    }
+    .hud-speed-unit {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+
+    /* 地圖圖例懸浮標籤 */
+    .map-legend-bar {
+      position: absolute;
+      bottom: 60px;
+      left: 10px;
+      z-index: 998;
+      background: rgba(11, 15, 25, 0.8);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.64rem;
+      color: var(--text-dim);
+    }
+
+    /* Leaflet 深色彈窗覆寫 */
+    .leaflet-popup-content-wrapper {
+      background: #131b2e !important;
+      color: #f8fafc !important;
+      border: 1px solid #3b82f6 !important;
+      border-radius: 8px !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important;
+    }
+    .leaflet-popup-tip {
+      background: #131b2e !important;
+      border: 1px solid #3b82f6 !important;
+    }
+    .leaflet-popup-content {
+      margin: 8px 10px !important;
+      line-height: 1.4 !important;
+    }
       --primary-hover: #2563eb;
       --snow-tunnel-accent: #06b6d4;
 
@@ -956,11 +1170,14 @@
   <!-- 固定頂部 Header (極度精簡) -->
   <header>
     <div class="header-inner">
-      <button class="brand-btn" onclick="renderIndexView()">
-        🛣️ 全台即時路況 <span class="brand-tag">MVP</span>
+      <button class="brand-btn" onclick="toggleMainView()">
+        🛣️ 即時路況 <span class="brand-tag" id="viewModeTag">地圖</span>
       </button>
 
       <div class="header-right">
+        <button class="view-mode-toggle" onclick="toggleMainView()" title="切換地圖模式 / 列表戰情室">
+          <span id="viewModeBtnText">📋 列表</span>
+        </button>
         <button class="btn-font-toggle" onclick="toggleFontSize()" title="切換字體大小 (標準 / 大字 / 特大字)">
           🔤 <span id="fontSizeLabel">標準</span>
         </button>
@@ -4983,18 +5200,24 @@
     }
 
     /* ==========================================================================
-       3. 應用程式核心狀態
+       3. 應用程式核心狀態 (支援地圖視圖與行車 HUD)
        ========================================================================== */
     const AppState = {
-      currentView: 'index',
+      currentView: localStorage.getItem('traffic_view_mode') || 'map', // 預設開啟即時地圖
       selectedRoadId: 'freeway-5',
       selectedDirection: 'S',
       selectedCategory: 'all',
+      selectedZone: 'all',
       searchQuery: '',
       isTunnelScopeOnly: false,
       forwardOnlyMode: false,
       userLocation: null,
+      userSpeed: 0,
       isLocating: false,
+      isGpsFollow: true,
+      mapInstance: null,
+      mapLayerGroup: null,
+      gpsMarker: null,
       watchId: null,
       wakeLock: null,
       userIsScrolling: false,
@@ -5002,6 +5225,14 @@
       lastNearestStationName: null,
       countdownSeconds: 60,
       timerId: null
+    };
+
+    const ZONE_PRESETS = {
+      all: { center: [23.75, 120.95], zoom: 7.5, name: '🗺️ 全台' },
+      north: { center: [25.02, 121.52], zoom: 10, name: '🏙️ 北部' },
+      central: { center: [24.15, 120.65], zoom: 10, name: '🌾 中部' },
+      south: { center: [22.85, 120.35], zoom: 10, name: '🌴 南部' },
+      east: { center: [24.10, 121.55], zoom: 9, name: '⛰️ 東部' }
     };
 
     /* ==========================================================================
@@ -5316,10 +5547,304 @@
     }
 
     /* ==========================================================================
-       5. 視圖：首頁 (Dense Index View)
+       5. 視圖：全台路況即時地圖 (Interactive Live Traffic Map & Driving HUD)
+       ========================================================================== */
+    function updateHeaderViewToggle() {
+      const tag = document.getElementById('viewModeTag');
+      const btnText = document.getElementById('viewModeBtnText');
+      if (AppState.currentView === 'map') {
+        if (tag) tag.textContent = '地圖';
+        if (btnText) btnText.textContent = '📋 列表';
+      } else if (AppState.currentView === 'index') {
+        if (tag) tag.textContent = '列表';
+        if (btnText) btnText.textContent = '🗺️ 地圖';
+      } else {
+        if (tag) tag.textContent = '路況';
+        if (btnText) btnText.textContent = '🗺️ 地圖';
+      }
+    }
+
+    function toggleMainView() {
+      if (AppState.currentView === 'map') {
+        AppState.currentView = 'index';
+      } else {
+        AppState.currentView = 'map';
+      }
+      localStorage.setItem('traffic_view_mode', AppState.currentView);
+      updateHeaderViewToggle();
+      if (AppState.currentView === 'map') {
+        renderMapView();
+      } else {
+        renderIndexView();
+      }
+    }
+
+    function flyToZone(zoneKey) {
+      AppState.selectedZone = zoneKey;
+      const preset = ZONE_PRESETS[zoneKey] || ZONE_PRESETS.all;
+      if (AppState.mapInstance) {
+        AppState.mapInstance.flyTo(preset.center, preset.zoom, { duration: 1.0 });
+      }
+      document.querySelectorAll('.zone-pill').forEach(el => {
+        el.classList.toggle('active', el.dataset.zone === zoneKey);
+      });
+    }
+
+    function toggleGpsTracking() {
+      if (AppState.watchId !== null || AppState.userLocation) {
+        clearGeolocation();
+      } else {
+        triggerGeolocation();
+      }
+    }
+
+    function toggleGpsFollow() {
+      AppState.isGpsFollow = !AppState.isGpsFollow;
+      const fab = document.getElementById('fabFollowBtn');
+      if (fab) fab.classList.toggle('active', AppState.isGpsFollow);
+      if (AppState.isGpsFollow && AppState.userLocation && AppState.mapInstance) {
+        AppState.mapInstance.flyTo([AppState.userLocation.lat, AppState.userLocation.lng], 13);
+      }
+    }
+
+    function renderMapView() {
+      AppState.currentView = 'map';
+      updateHeaderViewToggle();
+      const container = document.getElementById('appContainer');
+
+      const zonePillsHTML = Object.entries(ZONE_PRESETS).map(([k, v]) => `
+        <button class="zone-pill ${AppState.selectedZone === k ? 'active' : ''}" data-zone="${k}" onclick="flyToZone('${k}')">
+          ${v.name}
+        </button>
+      `).join('');
+
+      container.innerHTML = `
+        <div id="mapWrapper">
+          <!-- 頂部分區滑動導航 -->
+          <div class="map-zone-bar">
+            ${zonePillsHTML}
+          </div>
+
+          <!-- 地圖容器 -->
+          <div id="map"></div>
+
+          <!-- 右側浮動按鈕 (定位跟隨) -->
+          <div class="map-fab-group">
+            <button class="map-fab ${AppState.userLocation ? 'active' : ''}" id="fabGpsBtn" onclick="toggleGpsTracking()" title="定位我的行車位置">
+              ${AppState.isLocating ? '⏳' : (AppState.userLocation ? '📍' : '🎯')}
+            </button>
+            <button class="map-fab ${AppState.isGpsFollow ? 'active' : ''}" id="fabFollowBtn" onclick="toggleGpsFollow()" title="開啟/關閉行車視角自動跟隨">
+              🚗
+            </button>
+          </div>
+
+          <!-- 圖例條 -->
+          <div class="map-legend-bar">
+            <span>速限：</span>
+            <span style="color:var(--speed-green)">🟢80+</span>
+            <span style="color:var(--speed-yellow)">🟡60-79</span>
+            <span style="color:var(--speed-orange)">🟠40-59</span>
+            <span style="color:var(--speed-red)">🔴20-39</span>
+            <span style="color:var(--speed-purple)">🟣0-19</span>
+          </div>
+
+          <!-- 行車 HUD 懸浮儀表板 -->
+          <div class="traffic-hud" id="trafficHud">
+            <div class="hud-left">
+              <div class="hud-route-tag" id="hudRouteTag">
+                <span>🛣️ 即時行車 HUD 儀表</span>
+              </div>
+              <div class="hud-station-name" id="hudStationName">
+                ${AppState.userLocation ? '正在鎖定最近交流道...' : '點擊 🎯 定位以啟動行車 HUD'}
+              </div>
+              <div class="hud-station-sub" id="hudStationSub">
+                ${AppState.userLocation ? 'GPS 持續動態追蹤中' : '支援自動跟隨與前方路段時速預警'}
+              </div>
+            </div>
+            <div class="hud-right">
+              <div class="hud-speed-num" id="hudSpeedNum">${AppState.userSpeed > 0 ? Math.round(AppState.userSpeed) : (AppState.userLocation ? '0' : '--')}</div>
+              <div class="hud-speed-unit">km/h</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      initLeafletMap();
+    }
+
+    function initLeafletMap() {
+      const mapEl = document.getElementById('map');
+      if (!mapEl) return;
+
+      if (AppState.mapInstance) {
+        try { AppState.mapInstance.remove(); } catch (e) {}
+        AppState.mapInstance = null;
+      }
+
+      const preset = ZONE_PRESETS[AppState.selectedZone] || ZONE_PRESETS.all;
+      const map = L.map('map', {
+        center: preset.center,
+        zoom: preset.zoom,
+        zoomControl: false,
+        maxZoom: 16,
+        minZoom: 6
+      });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CartoDB & OpenStreetMap',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      const layerGroup = L.layerGroup().addTo(map);
+      AppState.mapInstance = map;
+      AppState.mapLayerGroup = layerGroup;
+      AppState.gpsMarker = null;
+
+      drawRoadNetworkOnMap();
+      if (AppState.userLocation) {
+        updateGpsMarkerOnMap();
+      }
+    }
+
+    function getSpeedHex(speed) {
+      if (speed < 0) return '#64748b';
+      if (speed >= 80) return '#10b981';
+      if (speed >= 60) return '#f59e0b';
+      if (speed >= 40) return '#f97316';
+      if (speed >= 20) return '#ef4444';
+      return '#8b5cf6';
+    }
+
+    function drawRoadNetworkOnMap() {
+      if (!AppState.mapLayerGroup) return;
+      AppState.mapLayerGroup.clearLayers();
+
+      // 兼顧效能：優先繪製國道 (10條) 與主力快速公路 (14條)
+      const targetRoads = ROADS_DATABASE.filter(r => r.type === 'freeway' || r.type === 'express');
+
+      targetRoads.forEach(road => {
+        const traffic = generateTrafficData(road, road.defaultDirection || 'S');
+        const stations = traffic.stations;
+
+        for (let i = 0; i < stations.length - 1; i++) {
+          const st1 = stations[i].station;
+          const st2 = stations[i+1].station;
+          const speed = stations[i].avgSpeed;
+          const color = getSpeedHex(speed);
+
+          const latlngs = [
+            [st1.lat, st1.lng],
+            [st2.lat, st2.lng]
+          ];
+
+          const poly = L.polyline(latlngs, {
+            color: color,
+            weight: 5,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(AppState.mapLayerGroup);
+
+          poly.bindPopup(`
+            <div style="font-size:0.82rem; font-weight:700;">
+              <div style="color:#93c5fd; margin-bottom:3px;">${road.num} ${road.name.split(' (')[0]}</div>
+              <div>路段：${st1.name} ➔ ${st2.name}</div>
+              <div style="margin-top:4px; font-size:1rem; color:${color}">即時車速：${speed > 0 ? `${speed} km/h` : '常模備援'}</div>
+              <button onclick="openRoadDetail('${road.id}')" style="margin-top:6px; background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; cursor:pointer; width:100%;">查看車道全線詳情 →</button>
+            </div>
+          `);
+        }
+
+        // 標記主要交流道節點
+        stations.forEach(stItem => {
+          const st = stItem.station;
+          const circle = L.circleMarker([st.lat, st.lng], {
+            radius: 3.5,
+            fillColor: getSpeedHex(stItem.avgSpeed),
+            color: '#0b0f19',
+            weight: 1.5,
+            fillOpacity: 1
+          }).addTo(AppState.mapLayerGroup);
+
+          circle.bindPopup(`
+            <div style="font-size:0.82rem; font-weight:700;">
+              <div style="color:#60a5fa;">${road.num} (${st.k.toFixed(1)}k)</div>
+              <div style="font-size:0.95rem; margin:2px 0;">${st.name}</div>
+              <div style="color:${getSpeedHex(stItem.avgSpeed)}">即時時速：${stItem.avgSpeed > 0 ? `${stItem.avgSpeed} km/h` : '常模備援'}</div>
+              <button onclick="openRoadDetail('${road.id}')" style="margin-top:6px; background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; cursor:pointer; width:100%;">進入此路線 →</button>
+            </div>
+          `);
+        });
+      });
+    }
+
+    function updateGpsMarkerOnMap() {
+      if (!AppState.mapInstance || !AppState.userLocation) return;
+
+      const latlng = [AppState.userLocation.lat, AppState.userLocation.lng];
+
+      if (!AppState.gpsMarker) {
+        AppState.gpsMarker = L.circleMarker(latlng, {
+          radius: 8,
+          fillColor: '#38bdf8',
+          color: '#ffffff',
+          weight: 2.5,
+          fillOpacity: 1
+        }).addTo(AppState.mapInstance);
+        AppState.gpsMarker.bindPopup("<b>📍 您的行車即時位置</b>");
+      } else {
+        AppState.gpsMarker.setLatLng(latlng);
+      }
+
+      if (AppState.isGpsFollow) {
+        AppState.mapInstance.setView(latlng, AppState.mapInstance.getZoom() < 11 ? 12 : AppState.mapInstance.getZoom());
+      }
+
+      updateMapHud();
+    }
+
+    function updateMapHud() {
+      const hudTag = document.getElementById('hudRouteTag');
+      const hudName = document.getElementById('hudStationName');
+      const hudSub = document.getElementById('hudStationSub');
+      const hudSpeed = document.getElementById('hudSpeedNum');
+
+      if (hudSpeed) {
+        hudSpeed.textContent = AppState.userSpeed > 0 ? Math.round(AppState.userSpeed) : (AppState.userLocation ? '0' : '--');
+      }
+
+      if (!AppState.userLocation) {
+        if (hudName) hudName.textContent = '點擊 🎯 定位以啟動行車 HUD';
+        if (hudSub) hudSub.textContent = '支援自動跟隨與前方路段時速預警';
+        return;
+      }
+
+      // 尋找最近的道路與交流道
+      let closest = null;
+      let minDist = 9999;
+
+      ROADS_DATABASE.forEach(road => {
+        const res = getRoadNearestDistance(road, AppState.userLocation.lat, AppState.userLocation.lng);
+        if (res.minDist < minDist) {
+          minDist = res.minDist;
+          closest = { road, ...res };
+        }
+      });
+
+      if (closest && hudName) {
+        if (hudTag) hudTag.innerHTML = `<span>🛣️ ${closest.road.num} ${closest.road.name.split(' (')[0]}</span>`;
+        hudName.textContent = `📍 最近：${closest.nearestStation.name}`;
+        if (hudSub) hudSub.textContent = `相距約 ${minDist.toFixed(1)} km (里程 ${closest.nearestStation.k.toFixed(1)}k)`;
+      }
+    }
+
+    /* ==========================================================================
+       6. 視圖：首頁 (Dense Index View)
        ========================================================================== */
     function renderIndexView() {
       AppState.currentView = 'index';
+      updateHeaderViewToggle();
       const container = document.getElementById('appContainer');
 
       let filteredRoads = ROADS_DATABASE.filter(r => {
@@ -5799,7 +6324,11 @@
       }
 
       AppState.isLocating = true;
-      renderIndexView();
+      if (AppState.currentView === 'index') renderIndexView();
+      else if (AppState.currentView === 'map') {
+        const fab = document.getElementById('fabGpsBtn');
+        if (fab) fab.textContent = '⏳';
+      }
 
       // 請求螢幕長亮 (防止駕駛中手機休眠)
       try {
@@ -5818,7 +6347,21 @@
           AppState.userLocation = { lat: newLat, lng: newLng };
           AppState.isLocating = false;
 
-          if (AppState.currentView === 'index') {
+          // 計算行車 GPS 時速 (m/s 轉 km/h)
+          if (pos.coords.speed !== null && pos.coords.speed >= 0) {
+            AppState.userSpeed = pos.coords.speed * 3.6;
+          } else {
+            AppState.userSpeed = 0;
+          }
+
+          if (AppState.currentView === 'map') {
+            const fab = document.getElementById('fabGpsBtn');
+            if (fab) {
+              fab.classList.add('active');
+              fab.textContent = '📍';
+            }
+            updateGpsMarkerOnMap();
+          } else if (AppState.currentView === 'index') {
             renderIndexView();
           } else if (AppState.currentView === 'road-detail') {
             const road = ROADS_DATABASE.find(r => r.id === AppState.selectedRoadId);
@@ -5826,8 +6369,6 @@
               const { nearestStation } = getRoadNearestDistance(road, newLat, newLng);
               const hasStationChanged = (AppState.lastNearestStationName !== nearestStation.name);
               AppState.lastNearestStationName = nearestStation.name;
-
-              // 當車輛行經新交流道或處於僅看前方模式時即時重新渲染畫面
               renderRoadDetailView();
             }
           }
@@ -5857,9 +6398,23 @@
         AppState.wakeLock = null;
       }
       AppState.userLocation = null;
+      AppState.userSpeed = 0;
       AppState.isLocating = false;
       AppState.lastNearestStationName = null;
-      if (AppState.currentView === 'index') {
+
+      if (AppState.gpsMarker && AppState.mapInstance) {
+        try { AppState.mapInstance.removeLayer(AppState.gpsMarker); } catch (e) {}
+        AppState.gpsMarker = null;
+      }
+
+      if (AppState.currentView === 'map') {
+        const fab = document.getElementById('fabGpsBtn');
+        if (fab) {
+          fab.classList.remove('active');
+          fab.textContent = '🎯';
+        }
+        updateMapHud();
+      } else if (AppState.currentView === 'index') {
         renderIndexView();
       } else {
         renderRoadDetailView();
@@ -5890,7 +6445,9 @@
         if (AppState.countdownSeconds <= 0) {
           AppState.countdownSeconds = 60;
           await fetchLiveTrafficData(true);
-          if (AppState.currentView === 'index') {
+          if (AppState.currentView === 'map') {
+            drawRoadNetworkOnMap();
+          } else if (AppState.currentView === 'index') {
             renderIndexView();
           } else {
             renderRoadDetailView();
@@ -5934,15 +6491,28 @@
       if (label) label.textContent = FONT_LABELS[size] || '標準';
     }
 
+    function renderCurrentView() {
+      updateHeaderViewToggle();
+      if (AppState.currentView === 'map') {
+        renderMapView();
+      } else if (AppState.currentView === 'index') {
+        renderIndexView();
+      } else if (AppState.currentView === 'road-detail') {
+        renderRoadDetailView();
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', async () => {
       initFontSize();
-      renderIndexView();
+      renderCurrentView();
       startTimer();
       setupScrollProtection();
 
       // 初始化背景下載真實 TDX 數據
       await fetchLiveTrafficData();
-      if (AppState.currentView === 'index') {
+      if (AppState.currentView === 'map') {
+        drawRoadNetworkOnMap();
+      } else if (AppState.currentView === 'index') {
         renderIndexView();
       } else {
         renderRoadDetailView();
