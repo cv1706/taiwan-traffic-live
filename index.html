@@ -208,22 +208,128 @@
       color: var(--text-dim);
     }
 
-    /* 地圖圖例懸浮標籤 */
-    .map-legend-bar {
+    /* 方向切換過濾條 */
+    .map-dir-bar {
+      position: absolute;
+      top: 48px;
+      left: 10px;
+      z-index: 999;
+      display: flex;
+      gap: 4px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(8px);
+      padding: 2px 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .dir-pill {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .dir-pill.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+    }
+
+    /* 地圖可展開速限圖例說明卡 */
+    .map-legend-card {
       position: absolute;
       bottom: 60px;
       left: 10px;
       z-index: 998;
-      background: rgba(11, 15, 25, 0.8);
-      backdrop-filter: blur(6px);
+      background: rgba(11, 15, 25, 0.92);
+      backdrop-filter: blur(8px);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 6px;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      max-width: 290px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      cursor: pointer;
+      transition: max-height 0.3s ease;
+    }
+    .legend-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .legend-card-body {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.65rem;
+    }
+    .legend-row {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 0.64rem;
+    }
+    .legend-badge {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* 雙向路段對比彈窗 */
+    .popup-dual-wrap {
+      font-size: 0.8rem;
+      min-width: 210px;
+    }
+    .popup-dual-title {
+      font-size: 0.88rem;
+      font-weight: 800;
+      color: #93c5fd;
+      margin-bottom: 4px;
+    }
+    .popup-dual-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 6px 0;
+    }
+    .popup-dir-box {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 6px;
+      text-align: center;
+    }
+    .popup-dir-label {
+      font-size: 0.66rem;
       color: var(--text-dim);
+      font-weight: 700;
+    }
+    .popup-dir-speed {
+      font-size: 1.15rem;
+      font-weight: 900;
+      font-family: 'Inter', monospace;
+      margin: 2px 0;
+    }
+    .popup-detail-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 2px;
     }
 
     /* Leaflet 深色彈窗覆寫 */
@@ -5607,6 +5713,22 @@
       }
     }
 
+    function setMapDirectionFilter(dirMode) {
+      AppState.selectedMapDir = dirMode;
+      document.querySelectorAll('.dir-pill').forEach(el => {
+        el.classList.toggle('active', el.dataset.dir === dirMode);
+      });
+      drawRoadNetworkOnMap();
+    }
+
+    function toggleLegendCard() {
+      AppState.isLegendExpanded = !AppState.isLegendExpanded;
+      const body = document.getElementById('legendCardBody');
+      const arrow = document.getElementById('legendToggleArrow');
+      if (body) body.style.display = AppState.isLegendExpanded ? 'flex' : 'none';
+      if (arrow) arrow.textContent = AppState.isLegendExpanded ? '收合 ▲' : '展開 ▼';
+    }
+
     function renderMapView() {
       AppState.currentView = 'map';
       updateHeaderViewToggle();
@@ -5625,6 +5747,19 @@
             ${zonePillsHTML}
           </div>
 
+          <!-- 方向過濾條 (雙向 / 僅南下東向 / 僅北上西向) -->
+          <div class="map-dir-bar">
+            <button class="dir-pill ${(!AppState.selectedMapDir || AppState.selectedMapDir === 'both') ? 'active' : ''}" data-dir="both" onclick="setMapDirectionFilter('both')">
+              ↔ 雙向並呈
+            </button>
+            <button class="dir-pill ${AppState.selectedMapDir === 'forward' ? 'active' : ''}" data-dir="forward" onclick="setMapDirectionFilter('forward')">
+              ⬇️ 僅南下/東向
+            </button>
+            <button class="dir-pill ${AppState.selectedMapDir === 'reverse' ? 'active' : ''}" data-dir="reverse" onclick="setMapDirectionFilter('reverse')">
+              ⬆️ 僅北上/西向
+            </button>
+          </div>
+
           <!-- 地圖容器 -->
           <div id="map"></div>
 
@@ -5638,14 +5773,30 @@
             </button>
           </div>
 
-          <!-- 圖例條 -->
-          <div class="map-legend-bar">
-            <span>速限：</span>
-            <span style="color:var(--speed-green)">🟢80+</span>
-            <span style="color:var(--speed-yellow)">🟡60-79</span>
-            <span style="color:var(--speed-orange)">🟠40-59</span>
-            <span style="color:var(--speed-red)">🔴20-39</span>
-            <span style="color:var(--speed-purple)">🟣0-19</span>
+          <!-- 高公局 5 階速限說明卡 (可展開/收合) -->
+          <div class="map-legend-card" id="mapLegendCard" onclick="toggleLegendCard()">
+            <div class="legend-card-header">
+              <span style="font-weight:800; color:#cbd5e1;">📊 高公局 5 階速限說明</span>
+              <span id="legendToggleArrow" style="font-size:0.65rem; color:#60a5fa;">展開 ▼</span>
+            </div>
+            <div id="legendMiniBar" style="display:flex; align-items:center; gap:6px; margin-top:3px;">
+              <span style="color:var(--speed-green)">🟢80+</span>
+              <span style="color:var(--speed-yellow)">🟡60-79</span>
+              <span style="color:var(--speed-orange)">🟠40-59</span>
+              <span style="color:var(--speed-red)">🔴20-39</span>
+              <span style="color:var(--speed-purple)">🟣0-19</span>
+            </div>
+            <div class="legend-card-body" id="legendCardBody" style="display:none;">
+              <div class="legend-row"><div class="legend-badge" style="background:var(--speed-green)"></div> <b>80+ km/h</b>：綠燈全線暢通 (順暢)</div>
+              <div class="legend-row"><div class="legend-badge" style="background:var(--speed-yellow)"></div> <b>60-79 km/h</b>：黃燈車多慢行 (注意車距)</div>
+              <div class="legend-row"><div class="legend-badge" style="background:var(--speed-orange)"></div> <b>40-59 km/h</b>：橘燈壅塞 (走走停停)</div>
+              <div class="legend-row"><div class="legend-badge" style="background:var(--speed-red)"></div> <b>20-39 km/h</b>：紅燈嚴重壅塞</div>
+              <div class="legend-row"><div class="legend-badge" style="background:var(--speed-purple)"></div> <b>0-19 km/h</b>：紫爆大回堵 (事故/瓶頸)</div>
+              <div class="legend-row"><div class="legend-badge" style="background:#64748b"></div> <b>離線/常模</b>：無偵測器或備援模式</div>
+              <div style="margin-top:4px; padding-top:4px; border-top:1px dashed var(--border); color:#93c5fd; line-height:1.35;">
+                🚗 <b>雙向軌道辨識</b>：靠右軌道為南下/東向，靠左軌道為北上/西向。
+              </div>
+            </div>
           </div>
 
           <!-- 行車 HUD 懸浮儀表板 -->
@@ -5716,6 +5867,66 @@
       return '#8b5cf6';
     }
 
+    /**
+     * 幾何雙軌平移演算法：依據台灣靠右行駛習慣，將相鄰兩站折線拆分為順向（南下/東向）與逆向（北上/西向）
+     */
+    function getOffsetSegment(p1, p2, offsetMeters) {
+      const dLat = p2.lat - p1.lat;
+      const dLng = p2.lng - p1.lng;
+      const len = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (len === 0) return { forward: [[p1.lat, p1.lng], [p2.lat, p2.lng]], reverse: [[p1.lat, p1.lng], [p2.lat, p2.lng]] };
+
+      // 經緯度微幅法向量 (向右側法向旋轉 90度: [-dLng, dLat])
+      const scale = (offsetMeters / 111000) / len;
+      const nLat = -dLng * scale;
+      const nLng = dLat * scale;
+
+      return {
+        forward: [
+          [p1.lat + nLat, p1.lng + nLng],
+          [p2.lat + nLat, p2.lng + nLng]
+        ],
+        reverse: [
+          [p1.lat - nLat, p1.lng - nLng],
+          [p2.lat - nLat, p2.lng - nLng]
+        ]
+      };
+    }
+
+    function buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev) {
+      const dir1Label = road.directions[0].name;
+      const dir2Label = road.directions[1] ? road.directions[1].name : '逆向';
+      const colorFwd = getSpeedHex(speedFwd);
+      const colorRev = getSpeedHex(speedRev);
+
+      const secText = st2 ? `${st1.name} ↔ ${st2.name}` : `${st1.name} (${st1.k.toFixed(1)}k)`;
+
+      return `
+        <div class="popup-dual-wrap">
+          <div class="popup-dual-title">🛣️ ${road.num} ${road.name.split(' (')[0]}</div>
+          <div style="font-size:0.75rem; color:#cbd5e1; margin-bottom:4px;">${secText}</div>
+
+          <div class="popup-dual-grid">
+            <div class="popup-dir-box">
+              <div class="popup-dir-label">⬇️ ${dir1Label}</div>
+              <div class="popup-dir-speed" style="color:${colorFwd}">${speedFwd > 0 ? `${speedFwd}` : '--'}<span style="font-size:0.6rem;">km/h</span></div>
+              <button class="popup-detail-btn" onclick="openRoadDetailWithDir('${road.id}', '${dir1}')">看${dir1Label} →</button>
+            </div>
+            <div class="popup-dir-box">
+              <div class="popup-dir-label">⬆️ ${dir2Label}</div>
+              <div class="popup-dir-speed" style="color:${colorRev}">${speedRev > 0 ? `${speedRev}` : '--'}<span style="font-size:0.6rem;">km/h</span></div>
+              <button class="popup-detail-btn" onclick="openRoadDetailWithDir('${road.id}', '${dir2}')">看${dir2Label} →</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openRoadDetailWithDir(roadId, dir) {
+      AppState.selectedDirection = dir;
+      openRoadDetail(roadId);
+    }
+
     function drawRoadNetworkOnMap() {
       if (!AppState.mapLayerGroup) return;
       AppState.mapLayerGroup.clearLayers();
@@ -5723,58 +5934,73 @@
       // 兼顧效能：優先繪製國道 (10條) 與主力快速公路 (14條)
       const targetRoads = ROADS_DATABASE.filter(r => r.type === 'freeway' || r.type === 'express');
 
+      const showFwd = (!AppState.selectedMapDir || AppState.selectedMapDir === 'both' || AppState.selectedMapDir === 'forward');
+      const showRev = (!AppState.selectedMapDir || AppState.selectedMapDir === 'both' || AppState.selectedMapDir === 'reverse');
+
       targetRoads.forEach(road => {
-        const traffic = generateTrafficData(road, road.defaultDirection || 'S');
-        const stations = traffic.stations;
+        const dir1 = road.directions[0].key; // 通常為 S 或 E
+        const dir2 = road.directions[1] ? road.directions[1].key : (dir1 === 'S' ? 'N' : 'W'); // 通常為 N 或 W
 
-        for (let i = 0; i < stations.length - 1; i++) {
-          const st1 = stations[i].station;
-          const st2 = stations[i+1].station;
-          const speed = stations[i].avgSpeed;
-          const color = getSpeedHex(speed);
+        const trafficFwd = generateTrafficData(road, dir1);
+        const trafficRev = generateTrafficData(road, dir2);
 
-          const latlngs = [
-            [st1.lat, st1.lng],
-            [st2.lat, st2.lng]
-          ];
+        const stationsFwd = trafficFwd.stations;
+        const stationsRev = trafficRev.stations;
 
-          const poly = L.polyline(latlngs, {
-            color: color,
-            weight: 5,
-            opacity: 0.9,
-            lineCap: 'round',
-            lineJoin: 'round'
-          }).addTo(AppState.mapLayerGroup);
+        for (let i = 0; i < stationsFwd.length - 1; i++) {
+          const st1 = stationsFwd[i].station;
+          const st2 = stationsFwd[i+1].station;
 
-          poly.bindPopup(`
-            <div style="font-size:0.82rem; font-weight:700;">
-              <div style="color:#93c5fd; margin-bottom:3px;">${road.num} ${road.name.split(' (')[0]}</div>
-              <div>路段：${st1.name} ➔ ${st2.name}</div>
-              <div style="margin-top:4px; font-size:1rem; color:${color}">即時車速：${speed > 0 ? `${speed} km/h` : '常模備援'}</div>
-              <button onclick="openRoadDetail('${road.id}')" style="margin-top:6px; background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; cursor:pointer; width:100%;">查看車道全線詳情 →</button>
-            </div>
-          `);
+          const speedFwd = stationsFwd[i].avgSpeed;
+          const speedRev = (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
+
+          const colorFwd = getSpeedHex(speedFwd);
+          const colorRev = getSpeedHex(speedRev);
+
+          const offsets = getOffsetSegment(st1, st2, 135);
+
+          // 順向折線 (南下 / 東向 - 靠右側/外軌)
+          if (showFwd) {
+            const polyFwd = L.polyline(offsets.forward, {
+              color: colorFwd,
+              weight: 4.5,
+              opacity: 0.92,
+              lineCap: 'round',
+              lineJoin: 'round'
+            }).addTo(AppState.mapLayerGroup);
+
+            polyFwd.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev));
+          }
+
+          // 逆向折線 (北上 / 西向 - 靠左側/內軌)
+          if (showRev) {
+            const polyRev = L.polyline(offsets.reverse, {
+              color: colorRev,
+              weight: 4.5,
+              opacity: 0.92,
+              lineCap: 'round',
+              lineJoin: 'round'
+            }).addTo(AppState.mapLayerGroup);
+
+            polyRev.bindPopup(buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev));
+          }
         }
 
         // 標記主要交流道節點
-        stations.forEach(stItem => {
+        stationsFwd.forEach((stItem, idx) => {
           const st = stItem.station;
+          const spdF = stItem.avgSpeed;
+          const spdR = stationsRev[idx] ? stationsRev[idx].avgSpeed : spdF;
+
           const circle = L.circleMarker([st.lat, st.lng], {
             radius: 3.5,
-            fillColor: getSpeedHex(stItem.avgSpeed),
+            fillColor: getSpeedHex(Math.min(spdF, spdR)),
             color: '#0b0f19',
             weight: 1.5,
             fillOpacity: 1
           }).addTo(AppState.mapLayerGroup);
 
-          circle.bindPopup(`
-            <div style="font-size:0.82rem; font-weight:700;">
-              <div style="color:#60a5fa;">${road.num} (${st.k.toFixed(1)}k)</div>
-              <div style="font-size:0.95rem; margin:2px 0;">${st.name}</div>
-              <div style="color:${getSpeedHex(stItem.avgSpeed)}">即時時速：${stItem.avgSpeed > 0 ? `${stItem.avgSpeed} km/h` : '常模備援'}</div>
-              <button onclick="openRoadDetail('${road.id}')" style="margin-top:6px; background:#3b82f6; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.75rem; cursor:pointer; width:100%;">進入此路線 →</button>
-            </div>
-          `);
+          circle.bindPopup(buildDualPopupHTML(road, st, null, dir1, dir2, spdF, spdR));
         });
       });
     }
