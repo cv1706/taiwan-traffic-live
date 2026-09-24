@@ -1,0 +1,40 @@
+name: Update Live Traffic Data
+
+on:
+  schedule:
+    # 每 5 分鐘自動執行一次抓取
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests
+
+      - name: Fetch TDX Live Traffic
+        env:
+          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID || 'cv1706yang-8ba9e89a-7819-43c6' }}
+          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET || '4ba7c5d3-e9aa-4687-981a-51f5361e8e81' }}
+        run: |
+          python fetch_tdx.py
+
+      - name: Commit and Push if Changed
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add traffic_live.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update live traffic data [skip ci]" && git push)

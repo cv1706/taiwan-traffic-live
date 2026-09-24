@@ -4959,112 +4959,51 @@
     };
 
     /* ==========================================================================
-       4. 交通部 TDX 官方即時路況連線與數據引擎
+       4. 全台即時路況中繼連線與數據引擎
        ========================================================================== */
-    const TDX_CONFIG = {
-      clientId: 'cv1706yang-8ba9e89a-7819-43c6',
-      clientSecret: '4ba7c5d3-e9aa-4687-981a-51f5361e8e81',
-      tokenUrl: 'https://tdx.transportdata.gouv.tw/auth/realms/TDXConnect/protocol/openid-connect/token',
-      freewaySectionUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Section/Freeway?$format=JSON',
-      highwaySectionUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Section/Highway?$format=JSON',
-      freewayIncidentUrl: 'https://tdx.transportdata.gouv.tw/api/basic/v2/Road/Traffic/Live/Incident/Freeway?$format=JSON'
-    };
-
     const TrafficDataStore = {
-      freewaySections: [],
-      highwaySections: [],
+      freewayMap: {},
+      highwayMap: {},
       incidents: [],
       lastFetchTime: 0,
+      updateTimeStr: '',
       isFetching: false,
       status: 'init' // 'live' | 'fallback' | 'init'
     };
 
     /**
-     * 取得 TDX OAuth2 Access Token (具備 localStorage 自動快取與提早 5 分鐘刷新機制)
-     */
-    async function getTDXAccessToken() {
-      const cached = localStorage.getItem('tdx_token_data');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (parsed.token && parsed.expiry > Date.now()) {
-            return parsed.token;
-          }
-        } catch (e) {}
-      }
-
-      try {
-        const params = new URLSearchParams();
-        params.append('grant_type', 'client_credentials');
-        params.append('client_id', TDX_CONFIG.clientId);
-        params.append('client_secret', TDX_CONFIG.clientSecret);
-
-        const res = await fetch(TDX_CONFIG.tokenUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString()
-        });
-
-        if (!res.ok) throw new Error(`Token HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.access_token) {
-          const expiry = Date.now() + ((data.expires_in || 86400) - 300) * 1000;
-          localStorage.setItem('tdx_token_data', JSON.stringify({ token: data.access_token, expiry }));
-          return data.access_token;
-        }
-      } catch (err) {
-        console.warn('TDX Token 驗證異常:', err);
-      }
-      return null;
-    }
-
-    /**
-     * 向 TDX 下載全台即時路況與事件數據 (45 秒記憶體快取)
+     * 下載全台即時路況快取中繼數據 (支援 GitHub Pages 同步與平滑備援)
      */
     async function fetchLiveTrafficData(force = false) {
       const now = Date.now();
-      if (!force && (now - TrafficDataStore.lastFetchTime < 45000) && (TrafficDataStore.freewaySections.length > 0 || TrafficDataStore.highwaySections.length > 0)) {
+      if (!force && (now - TrafficDataStore.lastFetchTime < 30000) && (Object.keys(TrafficDataStore.freewayMap).length > 0)) {
         return;
       }
       if (TrafficDataStore.isFetching) return;
       TrafficDataStore.isFetching = true;
 
       try {
-        const token = await getTDXAccessToken();
-        if (!token) throw new Error('無法取得 TDX 授權 Token');
+        const res = await fetch(`./traffic_live.json?t=${now}`, {
+          cache: 'no-store'
+        });
 
-        const headers = {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        };
-
-        const [freewayRes, highwayRes, incidentRes] = await Promise.allSettled([
-          fetch(TDX_CONFIG.freewaySectionUrl, { headers }),
-          fetch(TDX_CONFIG.highwaySectionUrl, { headers }),
-          fetch(TDX_CONFIG.freewayIncidentUrl, { headers })
-        ]);
-
-        let gotData = false;
-        if (freewayRes.status === 'fulfilled' && freewayRes.value.ok) {
-          TrafficDataStore.freewaySections = await freewayRes.value.json();
-          gotData = true;
-        }
-        if (highwayRes.status === 'fulfilled' && highwayRes.value.ok) {
-          TrafficDataStore.highwaySections = await highwayRes.value.json();
-          gotData = true;
-        }
-        if (incidentRes.status === 'fulfilled' && incidentRes.value.ok) {
-          TrafficDataStore.incidents = await incidentRes.value.json();
-        }
-
-        if (gotData) {
-          TrafficDataStore.lastFetchTime = now;
-          TrafficDataStore.status = 'live';
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.freewayCount > 0 || data.highwayCount > 0 || data.status === 'success')) {
+            TrafficDataStore.freewayMap = data.freewayMap || {};
+            TrafficDataStore.highwayMap = data.highwayMap || {};
+            TrafficDataStore.incidents = data.incidents || [];
+            TrafficDataStore.updateTimeStr = data.updateTime || '';
+            TrafficDataStore.lastFetchTime = now;
+            TrafficDataStore.status = 'live';
+          } else {
+            TrafficDataStore.status = 'fallback';
+          }
         } else {
           TrafficDataStore.status = 'fallback';
         }
       } catch (err) {
-        console.warn('TDX 數據連線異常，啟用展示備援模式:', err);
+        // 離線模式或初次載入靜態備援
         TrafficDataStore.status = 'fallback';
       } finally {
         TrafficDataStore.isFetching = false;
@@ -5080,7 +5019,7 @@
       if (TrafficDataStore.status === 'live') {
         badge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
         badge.style.color = '#34d399';
-        text.textContent = 'TDX 即時';
+        text.textContent = TrafficDataStore.updateTimeStr ? `即時 (${TrafficDataStore.updateTimeStr.slice(11, 16)})` : 'TDX 即時';
       } else {
         badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
         badge.style.color = '#fbbf24';
@@ -5089,7 +5028,7 @@
     }
 
     /**
-     * 清洗站點名稱以利與 TDX SectionName 比對
+     * 清洗站點名稱以利與 TDX SectionName / VD 比對
      */
     function cleanStationKeyword(name) {
       if (!name) return '';
@@ -5100,40 +5039,35 @@
     }
 
     /**
-     * 尋找 TDX 對應之路段即時時速資料
+     * 尋找即時路況時速資料
      */
     function findTDXSectionData(road, fromStation, toStation) {
       const isFreeway = road.type === 'freeway';
-      const sectionList = isFreeway ? TrafficDataStore.freewaySections : TrafficDataStore.highwaySections;
-      if (!sectionList || sectionList.length === 0) return null;
+      const dataMap = isFreeway ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
 
       const nameA = cleanStationKeyword(fromStation.name);
       const nameB = toStation ? cleanStationKeyword(toStation.name) : '';
 
-      // 1. 起訖雙站交叉比對
-      if (nameA && nameB) {
-        const exact = sectionList.find(s => {
-          const sec = s.SectionName || '';
-          return sec.includes(nameA) && sec.includes(nameB);
-        });
-        if (exact && exact.TravelSpeed !== undefined && exact.TravelSpeed !== null) return exact;
-      }
-
-      // 2. 單站地名比對
-      if (nameA) {
-        const single = sectionList.find(s => (s.SectionName || '').includes(nameA));
-        if (single && single.TravelSpeed !== undefined && single.TravelSpeed !== null) return single;
+      // 1. 若有 key map (VDID / 路段關鍵字)
+      if (dataMap && Object.keys(dataMap).length > 0) {
+        for (const [key, val] of Object.entries(dataMap)) {
+          if (nameA && key.includes(nameA)) {
+            if (!nameB || key.includes(nameB)) {
+              return { TravelSpeed: val.speed, DataCollectTime: val.time };
+            }
+          }
+        }
       }
 
       return null;
     }
 
     /**
-     * 獲取道路即時路況數據 (優先解析 TDX 真實數值，斷線時自動降級)
+     * 獲取道路即時路況數據 (優先解析即時中繼數值，斷線時自動平滑備援)
      */
     function generateTrafficData(road, direction) {
       const now = new Date();
-      const isLive = (TrafficDataStore.status === 'live' && (TrafficDataStore.freewaySections.length > 0 || TrafficDataStore.highwaySections.length > 0));
+      const isLive = (TrafficDataStore.status === 'live');
       const stationData = [];
       const totalSts = road.stations.length;
 
@@ -5153,7 +5087,7 @@
               const cDate = new Date(matched.DataCollectTime);
               collectTimeStr = formatShortTime(cDate);
               const ageMin = (now.getTime() - cDate.getTime()) / 60000;
-              if (ageMin > 5) statusType = 'stale';
+              if (ageMin > 8) statusType = 'stale';
             }
           }
         }
