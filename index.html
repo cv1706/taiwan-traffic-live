@@ -875,11 +875,11 @@
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      padding: 8px 10px;
-      margin-bottom: 8px;
+      padding: 6px 8px;
+      margin-bottom: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
     }
 
     .ctrl-top-row {
@@ -1297,24 +1297,24 @@
       line-height: 1;
     }
 
-    /* 雪隧全線雙車道均速與進洞推薦決策卡 */
+    /* 雪隧全線雙車道均速與進洞推薦決策卡 (簡潔低高度) */
     .tunnel-decision-card {
-      background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%);
+      background: linear-gradient(135deg, rgba(30, 27, 75, 0.7) 0%, rgba(30, 41, 59, 0.85) 100%);
       border: 1px solid #3b82f6;
-      border-radius: var(--radius-md);
-      padding: 10px 12px;
-      margin-bottom: 8px;
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      margin-bottom: 6px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      gap: 5px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     }
 
     .decision-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       font-weight: 800;
       color: #93c5fd;
     }
@@ -1322,54 +1322,58 @@
     .decision-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
     }
 
     .decision-col {
       background: rgba(15, 23, 42, 0.6);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 8px;
-      text-align: center;
+      border-radius: 4px;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
     }
 
     .decision-col.winner {
       border-color: #10b981;
-      background: rgba(16, 185, 129, 0.08);
+      background: rgba(16, 185, 129, 0.12);
     }
 
     .decision-lane-title {
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       color: var(--text-sub);
       font-weight: 700;
-      margin-bottom: 2px;
+      white-space: nowrap;
     }
 
     .decision-speed {
-      font-size: 1.3rem;
+      font-size: 0.95rem;
       font-weight: 900;
       font-family: 'Inter', monospace;
-      line-height: 1.1;
+      line-height: 1;
     }
 
     .decision-time {
-      font-size: 0.68rem;
+      font-size: 0.65rem;
       color: var(--text-dim);
-      margin-top: 2px;
+      white-space: nowrap;
     }
 
     .decision-rec-banner {
       background: rgba(59, 130, 246, 0.15);
       border: 1px solid rgba(59, 130, 246, 0.4);
-      padding: 5px 8px;
-      border-radius: 4px;
-      font-size: 0.76rem;
+      padding: 3px 6px;
+      border-radius: 3px;
+      font-size: 0.72rem;
       font-weight: 700;
       color: #60a5fa;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 4px;
+      text-align: center;
     }
 
     .decision-rec-banner.fast {
@@ -6475,7 +6479,7 @@
 
       let html = `
         <div class="detail-sticky-panel">
-          <!-- 頂部控制列 (極致精簡) -->
+          <!-- 頂部控制列 (極致精簡置頂) -->
           <div class="road-ctrl-card">
             <div class="ctrl-top-row">
               <button class="back-link" onclick="goBackHome()">← 首頁</button>
@@ -6511,9 +6515,10 @@
               ` : ''}
             </div>
           </div>
+        </div>
       `;
 
-      // GPS 當前與下一出口速覽脈絡卡
+      // GPS 當前與下一出口速覽脈絡卡 (隨頁面滾動)
       if (nearestStationInfo && nearestIndex >= 0) {
         const currentStation = originalDisplayStations[nearestIndex];
         const nextStation = nearestIndex < originalDisplayStations.length - 1 ? originalDisplayStations[nearestIndex + 1] : null;
@@ -6547,14 +6552,14 @@
         `;
       }
 
-      // 事件警示 (單行)
+      // 事件警示 (隨頁面滾動)
       if (traffic.incidents && traffic.incidents.length > 0) {
         traffic.incidents.forEach(inc => {
           html += `<div class="incident-strip ${inc.type === 'warn' ? 'warn' : ''}">⚠️ ${inc.text}</div>`;
         });
       }
 
-      // 若為國5/雪隧，動態計算雪隧內部雙車道平均時速與進洞推薦卡片
+      // 若為國5/雪隧，動態計算雪隧內部雙車道平均時速與進洞推薦卡片 (精簡隨頁面滾動)
       if (road.hasTunnelMode) {
         const tunnelSts = traffic.stations.filter(s => s.station.isTunnel);
         if (tunnelSts.length > 0) {
@@ -6576,12 +6581,12 @@
             const diff = avgL1 - avgL2;
             if (diff >= 4) {
               const saveTime = (parseFloat(l2Time) - parseFloat(l1Time)).toFixed(1);
-              recText = `👉 系統推薦：【建議走內側車道】(全線均速快 ${diff} km/h，預估省 ${saveTime} 分鐘)`;
+              recText = `👉 系統推薦：【建議走內側車道】(快 ${diff} km/h，預估省 ${saveTime} 分)`;
               recClass = 'fast';
               l1Winner = true;
             } else if (diff <= -4) {
               const saveTime = (parseFloat(l1Time) - parseFloat(l2Time)).toFixed(1);
-              recText = `👉 系統推薦：【建議走外側車道】(全線均速快 ${Math.abs(diff)} km/h，預估省 ${saveTime} 分鐘)`;
+              recText = `👉 系統推薦：【建議走外側車道】(快 ${Math.abs(diff)} km/h，預估省 ${saveTime} 分)`;
               recClass = 'fast';
               l2Winner = true;
             } else {
@@ -6592,19 +6597,19 @@
           html += `
             <div class="tunnel-decision-card">
               <div class="decision-header">
-                <span>🏔️ 雪山隧道 (12.9km) 全程均速與進洞決策</span>
+                <span>🏔️ 雪山隧道雙車道均速 (12.9km)</span>
                 <span style="font-size: 0.68rem; color: #f59e0b;">全程禁止變換車道</span>
               </div>
               <div class="decision-grid">
                 <div class="decision-col ${l1Winner ? 'winner' : ''}">
-                  <div class="decision-lane-title">內側車道 (快車道)</div>
-                  <div class="decision-speed" style="color: ${l1Color}">${avgL1 > 0 ? `${avgL1} <span style="font-size:0.75rem;font-weight:600;">km/h</span>` : '--'}</div>
-                  <div class="decision-time">通過約 ${l1Time} 分鐘</div>
+                  <span class="decision-lane-title">內側 (快)</span>
+                  <span class="decision-speed" style="color: ${l1Color}">${avgL1 > 0 ? `${avgL1} km/h` : '--'}</span>
+                  <span class="decision-time">約 ${l1Time} 分</span>
                 </div>
                 <div class="decision-col ${l2Winner ? 'winner' : ''}">
-                  <div class="decision-lane-title">外側車道 (慢車道)</div>
-                  <div class="decision-speed" style="color: ${l2Color}">${avgL2 > 0 ? `${avgL2} <span style="font-size:0.75rem;font-weight:600;">km/h</span>` : '--'}</div>
-                  <div class="decision-time">通過約 ${l2Time} 分鐘</div>
+                  <span class="decision-lane-title">外側 (慢)</span>
+                  <span class="decision-speed" style="color: ${l2Color}">${avgL2 > 0 ? `${avgL2} km/h` : '--'}</span>
+                  <span class="decision-time">約 ${l2Time} 分</span>
                 </div>
               </div>
               ${recText ? `<div class="decision-rec-banner ${recClass}">${recText}</div>` : ''}
@@ -6613,17 +6618,16 @@
         }
       }
 
-      // 極小化圖例
+      // 極小化圖例 (隨頁面滾動)
       html += `
-          <div class="legend-strip">
-            <span>時速標示：</span>
-            <div class="legend-colors">
-              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-green)"></div> 80+</div>
-              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-yellow)"></div> 60</div>
-              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-orange)"></div> 40</div>
-              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-red)"></div> 20</div>
-              <div class="leg-dot"><div class="leg-box" style="background: var(--speed-purple)"></div> 0-19</div>
-            </div>
+        <div class="legend-strip">
+          <span>時速標示：</span>
+          <div class="legend-colors">
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-green)"></div> 80+</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-yellow)"></div> 60</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-orange)"></div> 40</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-red)"></div> 20</div>
+            <div class="leg-dot"><div class="leg-box" style="background: var(--speed-purple)"></div> 0-19</div>
           </div>
         </div>
       `;
