@@ -393,10 +393,12 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      height: 44px;
+      min-height: 44px;
       display: flex;
       align-items: center;
-      padding: 0 10px;
+      padding: 0 8px;
+      box-sizing: border-box;
+      width: 100%;
     }
 
     .header-inner {
@@ -406,35 +408,47 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
+      min-width: 0;
     }
 
     .brand-btn {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       background: none;
       border: none;
       color: var(--text-main);
-      font-size: 0.92rem;
+      font-size: 0.9rem;
       font-weight: 800;
       cursor: pointer;
-      padding: 4px 6px;
+      padding: 3px 5px;
       border-radius: var(--radius-sm);
+      white-space: nowrap;
+      flex-shrink: 1;
+      min-width: 0;
+    }
+
+    .brand-title-text {
+      white-space: nowrap;
     }
 
     .brand-tag {
       font-size: 0.65rem;
-      padding: 1px 5px;
+      padding: 1px 4px;
       border-radius: 4px;
       background: rgba(59, 130, 246, 0.2);
       color: var(--primary);
       font-weight: 700;
+      flex-shrink: 0;
     }
 
     .header-right {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 5px;
+      flex-shrink: 0;
+      min-width: 0;
     }
 
     .timer-pill {
@@ -444,9 +458,10 @@
       font-size: 0.72rem;
       color: var(--text-dim);
       background: var(--bg-surface);
-      padding: 2px 7px;
+      padding: 2px 6px;
       border-radius: 12px;
       font-family: monospace;
+      white-space: nowrap;
     }
 
     .timer-dot {
@@ -455,6 +470,7 @@
       border-radius: 50%;
       background: var(--speed-green);
       animation: blink 1.5s infinite;
+      flex-shrink: 0;
     }
 
     @keyframes blink {
@@ -466,13 +482,14 @@
       background: var(--bg-surface);
       color: var(--text-sub);
       border: 1px solid var(--border);
-      font-size: 0.75rem;
-      padding: 3px 8px;
+      font-size: 0.74rem;
+      padding: 3px 6px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 3px;
+      gap: 2px;
+      white-space: nowrap;
     }
 
     .btn-refresh:active {
@@ -483,9 +500,9 @@
       background: var(--bg-surface);
       color: #93c5fd;
       border: 1px solid rgba(59, 130, 246, 0.35);
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       font-weight: 700;
-      padding: 3px 7px;
+      padding: 3px 6px;
       border-radius: var(--radius-sm);
       cursor: pointer;
       display: flex;
@@ -496,6 +513,71 @@
 
     .btn-font-toggle:active {
       transform: scale(0.96);
+    }
+
+    /* 手機板適配與超緊湊頂部 */
+    @media (max-width: 600px) {
+      header {
+        padding: 0 4px;
+      }
+      .header-inner {
+        gap: 3px;
+      }
+      .header-right {
+        gap: 3px;
+      }
+      .btn-font-toggle #fontSizeLabel {
+        display: none;
+      }
+      .countdown-pill {
+        display: none !important;
+      }
+      .btn-refresh-text {
+        display: none;
+      }
+      .brand-btn {
+        font-size: 0.8rem;
+        padding: 2px 2px;
+        gap: 2px;
+      }
+      .brand-tag {
+        display: none;
+      }
+      .timer-pill {
+        padding: 2px 4px;
+        font-size: 0.68rem;
+      }
+      .view-mode-toggle {
+        padding: 2px 5px;
+        font-size: 0.7rem;
+      }
+      .detail-sticky-panel {
+        top: 44px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+        margin-bottom: 4px;
+      }
+      .road-ctrl-card {
+        padding: 5px 8px;
+        gap: 4px;
+      }
+      .ctrl-top-row {
+        gap: 4px;
+      }
+      .ctrl-road-title {
+        font-size: 0.82rem;
+        gap: 4px;
+        min-width: 0;
+      }
+      .ctrl-road-title span:last-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .seg-btn {
+        padding: 2px 6px;
+        font-size: 0.7rem;
+      }
     }
 
     /* 3 階字體縮放 (支援車載與手機架遠距清晰檢視) */
@@ -1277,7 +1359,7 @@
   <header>
     <div class="header-inner">
       <button class="brand-btn" onclick="goBackHome()">
-        🛣️ 即時路況 <span class="brand-tag" id="viewModeTag">地圖</span>
+        🛣️ <span class="brand-title-text">即時路況</span> <span class="brand-tag" id="viewModeTag">地圖</span>
       </button>
 
       <div class="header-right">
@@ -1285,16 +1367,16 @@
           <span id="viewModeBtnText">📋 列表</span>
         </button>
         <button class="btn-font-toggle" onclick="toggleFontSize()" title="切換字體大小 (標準 / 大字 / 特大字)">
-          🔤 <span id="fontSizeLabel">標準</span>
+          🔤<span id="fontSizeLabel">標準</span>
         </button>
         <div id="tdxStatusBadge" class="timer-pill" style="border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399;" title="TDX 即時路況數據連線狀態">
           <div class="timer-dot" style="background: #10b981;"></div>
           <span id="tdxStatusText">TDX 連線中</span>
         </div>
-        <div class="timer-pill">
+        <div class="timer-pill countdown-pill">
           <span id="countdownText">60s</span>
         </div>
-        <button class="btn-refresh" onclick="manualRefresh()">🔄 刷新</button>
+        <button class="btn-refresh" onclick="manualRefresh()">🔄<span class="btn-refresh-text"> 刷新</span></button>
       </div>
     </div>
   </header>
@@ -5355,7 +5437,67 @@
     };
 
     /**
-     * 下載全台即時路況快取中繼數據 (支援 GitHub Pages 同步與平滑備援)
+     * 從 TDX 官方 API 直接抓取即時資料 (客戶端直連備援)
+     */
+    async function fetchTDXDirectly() {
+      const tokenRes = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=client_credentials&client_id=cv1706yang-8ba9e89a-7819-43c6&client_secret=4ba7c5d3-e9aa-4687-981a-51f5361e8e81"
+      });
+      if (!tokenRes.ok) return null;
+      const tokenData = await tokenRes.json();
+      const token = tokenData.access_token;
+      if (!token) return null;
+
+      const authHeaders = { "Authorization": `Bearer ${token}`, "Accept": "application/json" };
+      const [fwRes, hwRes] = await Promise.all([
+        fetch("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Freeway?$format=JSON", { headers: authHeaders }),
+        fetch("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Highway?$format=JSON", { headers: authHeaders })
+      ]);
+
+      const fwJson = fwRes.ok ? await fwRes.json() : null;
+      const hwJson = hwRes.ok ? await hwRes.json() : null;
+
+      const parseVD = (data) => {
+        const map = {};
+        if (!data || !data.VDLives) return map;
+        const timeStr = data.UpdateTime || new Date().toISOString();
+        for (const item of data.VDLives) {
+          const vdid = item.VDID;
+          if (!vdid) continue;
+          const speeds = [];
+          for (const flow of (item.LinkFlows || [])) {
+            for (const lane of (flow.Lanes || [])) {
+              if (lane.Speed !== undefined && lane.Speed !== null && lane.Speed > 0) {
+                speeds.push(Math.round(lane.Speed));
+              }
+            }
+          }
+          if (speeds.length > 0) {
+            const avg = Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length);
+            map[vdid] = { speed: avg, lanes: speeds, time: timeStr };
+          }
+        }
+        return map;
+      };
+
+      const fwMap = parseVD(fwJson);
+      const hwMap = parseVD(hwJson);
+
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const nowStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+      return {
+        freewayMap: fwMap,
+        highwayMap: hwMap,
+        updateTime: nowStr
+      };
+    }
+
+    /**
+     * 下載全台即時路況快取中繼數據 (支援 GitHub Pages 同步、TDX 直連與平滑備援)
      */
     async function fetchLiveTrafficData(force = false) {
       const now = Date.now();
@@ -5366,28 +5508,53 @@
       TrafficDataStore.isFetching = true;
 
       try {
-        const res = await fetch(`./traffic_live.json?t=${now}`, {
-          cache: 'no-store'
-        });
+        let isJsonFresh = false;
+        try {
+          const res = await fetch(`./traffic_live.json?t=${now}`, {
+            cache: 'no-store'
+          });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data && (data.freewayCount > 0 || data.highwayCount > 0 || data.status === 'success')) {
-            TrafficDataStore.freewayMap = data.freewayMap || {};
-            TrafficDataStore.highwayMap = data.highwayMap || {};
-            TrafficDataStore.incidents = data.incidents || [];
-            TrafficDataStore.updateTimeStr = data.updateTime || '';
-            TrafficDataStore.lastFetchTime = now;
-            TrafficDataStore.status = 'live';
-          } else {
-            TrafficDataStore.status = 'fallback';
+          if (res.ok) {
+            const data = await res.json();
+            if (data && (data.freewayCount > 0 || data.highwayCount > 0 || data.status === 'success')) {
+              TrafficDataStore.freewayMap = data.freewayMap || {};
+              TrafficDataStore.highwayMap = data.highwayMap || {};
+              TrafficDataStore.incidents = data.incidents || [];
+              TrafficDataStore.updateTimeStr = data.updateTime || '';
+              TrafficDataStore.lastFetchTime = now;
+              TrafficDataStore.status = 'live';
+
+              // 檢查 json 是否在 15 分鐘以內
+              if (data.updateTimestamp && (now / 1000 - data.updateTimestamp < 900)) {
+                isJsonFresh = true;
+              }
+            }
           }
-        } else {
+        } catch (jsonErr) {
+          console.warn("Fetch json fallback:", jsonErr);
+        }
+
+        // 若 json 不夠新或手動強制更新，嘗試 TDX 官方 API 直連
+        if ((!isJsonFresh || force) && navigator.onLine) {
+          try {
+            const directData = await fetchTDXDirectly();
+            if (directData && Object.keys(directData.freewayMap).length > 0) {
+              TrafficDataStore.freewayMap = directData.freewayMap;
+              TrafficDataStore.highwayMap = directData.highwayMap;
+              TrafficDataStore.updateTimeStr = directData.updateTime;
+              TrafficDataStore.lastFetchTime = now;
+              TrafficDataStore.status = 'live';
+            }
+          } catch (tdxErr) {
+            console.warn("TDX direct fetch fallback:", tdxErr);
+          }
+        }
+
+        if (Object.keys(TrafficDataStore.freewayMap).length === 0) {
           TrafficDataStore.status = 'fallback';
         }
       } catch (err) {
-        // 離線模式或初次載入靜態備援
-        TrafficDataStore.status = 'fallback';
+        TrafficDataStore.status = (Object.keys(TrafficDataStore.freewayMap).length > 0) ? 'live' : 'fallback';
       } finally {
         TrafficDataStore.isFetching = false;
         updateTDXStatusUI();
@@ -5399,10 +5566,15 @@
       const text = document.getElementById('tdxStatusText');
       if (!badge || !text) return;
 
-      if (TrafficDataStore.status === 'live') {
+      if (TrafficDataStore.status === 'live' && Object.keys(TrafficDataStore.freewayMap).length > 0) {
+        let timeDisplay = '';
+        if (TrafficDataStore.updateTimeStr) {
+          const match = TrafficDataStore.updateTimeStr.match(/(\d{2}:\d{2})/);
+          if (match) timeDisplay = match[1];
+        }
         badge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
         badge.style.color = '#34d399';
-        text.textContent = TrafficDataStore.updateTimeStr ? `即時 (${TrafficDataStore.updateTimeStr.slice(11, 16)})` : 'TDX 即時';
+        text.textContent = timeDisplay ? `即時 (${timeDisplay})` : 'TDX 即時';
       } else {
         badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
         badge.style.color = '#fbbf24';
@@ -5501,10 +5673,9 @@
             liveLanes = matched.lanes;
             if (matched.DataCollectTime) {
               const cDate = new Date(matched.DataCollectTime);
-              collectTimeStr = formatShortTime(cDate);
-              const ageMin = (now.getTime() - cDate.getTime()) / 60000;
-              // 容許 60 分鐘內為有效即時資料，超過 60 分鐘才標記過期
-              if (ageMin > 60) statusType = 'stale';
+              if (!isNaN(cDate.getTime())) {
+                collectTimeStr = formatShortTime(cDate);
+              }
             }
           }
         }
@@ -6455,8 +6626,7 @@
               </div>
 
               <div class="strip-right">
-                ${item.statusType === 'stale' ? '<span class="strip-badge-stale">過期</span>' : ''}
-                ${item.statusType === 'missing' ? '<span class="strip-badge-missing">離線</span>' : ''}
+                ${item.avgSpeed <= 0 ? '<span class="strip-badge-missing">離線</span>' : ''}
 
                 <span class="strip-avg-speed" style="color: ${speedColor}">
                   ${item.avgSpeed > 0 ? item.avgSpeed : '--'}
