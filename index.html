@@ -949,7 +949,7 @@
 
     .gps-nav-grid {
       display: grid;
-      grid-template-columns: 1fr 1.2fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 6px;
       align-items: center;
     }
@@ -5601,29 +5601,48 @@
       const dataMap = isFreeway ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
       if (!dataMap || Object.keys(dataMap).length === 0) return null;
 
-      // 取得道路代號關鍵字 (例: "國1" -> "N1", "國3" -> "N3", "台61" -> "61")
       const roadNumDigits = road.num.replace(/[^\d]/g, '');
-      const roadPrefix = isFreeway ? `N${roadNumDigits}` : `${roadNumDigits}`;
       const dirPrefix = direction || 'N';
-
       const targetK = fromStation.k;
+
       let bestMatch = null;
-      let minDeltaK = 4.0; // 容許 4 公里以內的鄰近 VD 偵測點
+      let minDeltaK = 5.0; // 容許 5 公里以內的鄰近 VD 偵測點
 
-      for (const [vdId, val] of Object.entries(dataMap)) {
-        // 檢查是否包含道路與方向特徵 (例: "VD-N1-N-86.120")
-        const isRoadMatch = vdId.includes(roadPrefix) || vdId.includes(road.num);
-        const isDirMatch = vdId.includes(`-${dirPrefix}-`) || !direction;
+      if (isFreeway) {
+        // 國道精確比對：VD-N{num}- (排除 N10 誤配 N1 等問題)
+        const fwPrefix1 = `VD-N${roadNumDigits}-`;
+        const fwPrefix2 = `VD-N${roadNumDigits}H-`;
 
-        if (isRoadMatch && isDirMatch) {
-          // 從 VDID 中提取里程數 (例: 86.120)
-          const kMatch = vdId.match(/-(\d+(\.\d+)?)-/);
-          if (kMatch && kMatch[1]) {
-            const vdK = parseFloat(kMatch[1]);
-            const delta = Math.abs(vdK - targetK);
-            if (delta < minDeltaK) {
-              minDeltaK = delta;
-              bestMatch = val;
+        for (const [vdId, val] of Object.entries(dataMap)) {
+          const isRoadMatch = vdId.startsWith(fwPrefix1) || vdId.startsWith(fwPrefix2) || vdId.includes(`-${road.num}-`);
+          const isDirMatch = vdId.includes(`-${dirPrefix}-`) || !direction;
+
+          if (isRoadMatch && isDirMatch) {
+            const kMatch = vdId.match(/-(\d+(\.\d+)?)-/);
+            if (kMatch && kMatch[1]) {
+              const vdK = parseFloat(kMatch[1]);
+              const delta = Math.abs(vdK - targetK);
+              if (delta < minDeltaK) {
+                minDeltaK = delta;
+                bestMatch = val;
+              }
+            }
+          }
+        }
+      } else {
+        // 快速公路/省道比對：VD-xx-{4碼路線編號}-{里程k}-{方向}
+        const hwCode = roadNumDigits.padStart(3, '0') + '0'; // 61 -> 0610, 2 -> 0020
+        for (const [vdId, val] of Object.entries(dataMap)) {
+          const isRoadMatch = vdId.includes(`-${hwCode}-`) || vdId.includes(road.num);
+          if (isRoadMatch) {
+            const parts = vdId.split('-');
+            if (parts.length >= 5 && /^\d+$/.test(parts[3])) {
+              const vdK = parseFloat(parts[3]);
+              const delta = Math.abs(vdK - targetK);
+              if (delta < minDeltaK) {
+                minDeltaK = delta;
+                bestMatch = val;
+              }
             }
           }
         }
@@ -6458,9 +6477,8 @@
           </div>
       `;
 
-      // GPS 前後出口速覽脈絡卡
+      // GPS 當前與下一出口速覽脈絡卡
       if (nearestStationInfo && nearestIndex >= 0) {
-        const prevStation = nearestIndex > 0 ? originalDisplayStations[nearestIndex - 1] : null;
         const currentStation = originalDisplayStations[nearestIndex];
         const nextStation = nearestIndex < originalDisplayStations.length - 1 ? originalDisplayStations[nearestIndex + 1] : null;
 
@@ -6468,30 +6486,21 @@
           <div class="gps-nav-banner">
             <div class="gps-nav-top">
               <span>📍 目前定位：${nearestStationInfo.station.name}（相距約 ${nearestStationInfo.minDist.toFixed(1)} km）</span>
-              <span style="font-size: 0.68rem; color: #60a5fa;">${AppState.forwardOnlyMode ? '已過濾後方' : '已自動垂直置中'}</span>
+              <span style="font-size: 0.68rem; color: #60a5fa;">${AppState.forwardOnlyMode ? '已過濾後方' : '已自動置中'}</span>
             </div>
             <div class="gps-nav-grid">
-              <!-- 前一出口 -->
-              <div class="gps-nav-node">
-                <div class="gps-nav-label">前一站 (${AppState.selectedDirection === 'S' || AppState.selectedDirection === 'E' ? '北側/上游' : '南側/上游'})</div>
-                <div class="gps-nav-name">${prevStation ? renderStationNameHTML(prevStation.station.name, false) : '路線起點'}</div>
-                <div class="gps-nav-speed" style="color: ${prevStation ? getSpeedColor(prevStation.avgSpeed) : 'var(--text-dim)'}">
-                  ${prevStation ? (prevStation.avgSpeed > 0 ? `${prevStation.avgSpeed} km/h` : '--') : '--'}
-                </div>
-              </div>
-
               <!-- 目前所在 -->
               <div class="gps-nav-node active">
-                <div class="gps-nav-label" style="color: #60a5fa; font-weight: 700;">📍 當前交流道</div>
+                <div class="gps-nav-label" style="color: #60a5fa; font-weight: 700;">📍 目前交流道</div>
                 <div class="gps-nav-name" style="color: #60a5fa;">${renderStationNameHTML(currentStation.station.name, false)}</div>
                 <div class="gps-nav-speed" style="color: ${getSpeedColor(currentStation.avgSpeed)}">
                   ${currentStation.avgSpeed > 0 ? `${currentStation.avgSpeed} km/h` : '--'}
                 </div>
               </div>
 
-              <!-- 後一出口 -->
+              <!-- 下一出口 -->
               <div class="gps-nav-node">
-                <div class="gps-nav-label">下一站 (${AppState.selectedDirection === 'S' || AppState.selectedDirection === 'E' ? '即將抵達' : '即將抵達'})</div>
+                <div class="gps-nav-label">➡️ 下一出口 (即將抵達)</div>
                 <div class="gps-nav-name">${nextStation ? renderStationNameHTML(nextStation.station.name, false) : '路線終點'}</div>
                 <div class="gps-nav-speed" style="color: ${nextStation ? getSpeedColor(nextStation.avgSpeed) : 'var(--text-dim)'}">
                   ${nextStation ? (nextStation.avgSpeed > 0 ? `${nextStation.avgSpeed} km/h` : '--') : '--'}
