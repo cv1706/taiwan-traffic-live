@@ -548,8 +548,9 @@
         font-size: 0.68rem;
       }
       .view-mode-toggle {
-        padding: 2px 5px;
-        font-size: 0.7rem;
+        padding: 4px 8px;
+        font-size: 0.74rem;
+        min-height: 34px;
       }
       .detail-sticky-panel {
         top: 44px;
@@ -558,14 +559,14 @@
         margin-bottom: 4px;
       }
       .road-ctrl-card {
-        padding: 5px 8px;
-        gap: 4px;
+        padding: 6px 8px;
+        gap: 6px;
       }
       .ctrl-top-row {
-        gap: 4px;
+        gap: 6px;
       }
       .ctrl-road-title {
-        font-size: 0.82rem;
+        font-size: 0.86rem;
         gap: 4px;
         min-width: 0;
       }
@@ -575,8 +576,9 @@
         white-space: nowrap;
       }
       .seg-btn {
-        padding: 2px 6px;
-        font-size: 0.7rem;
+        padding: 7px 10px;
+        font-size: 0.8rem;
+        min-height: 36px;
       }
     }
 
@@ -732,25 +734,37 @@
     /* 分類切換按鈕組 */
     .cat-tabs {
       display: flex;
-      gap: 4px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 10px;
       overflow-x: auto;
       padding-bottom: 2px;
+      scrollbar-width: none;
     }
+    .cat-tabs::-webkit-scrollbar { display: none; }
 
     .cat-tab {
       flex: 1;
-      min-width: 70px;
+      min-width: 76px;
+      min-height: 40px;
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-sub);
-      font-size: 0.75rem;
+      font-size: 0.84rem;
       font-weight: 700;
-      padding: 5px 0;
+      padding: 8px 6px;
       cursor: pointer;
       text-align: center;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+      transition: all 0.15s ease;
+    }
+
+    .cat-tab:active {
+      transform: scale(0.96);
     }
 
     .cat-tab.active {
@@ -875,20 +889,29 @@
     }
 
     .back-link {
-      background: none;
-      border: none;
-      color: var(--primary);
-      font-size: 0.78rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: #60a5fa;
+      font-size: 0.84rem;
       font-weight: 700;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 3px;
-      padding: 0;
+      justify-content: center;
+      gap: 4px;
+      padding: 6px 12px;
+      min-height: 36px;
+      border-radius: var(--radius-sm);
+      touch-action: manipulation;
+      transition: all 0.15s ease;
+    }
+
+    .back-link:active {
+      transform: scale(0.96);
     }
 
     .ctrl-road-title {
-      font-size: 0.88rem;
+      font-size: 0.92rem;
       font-weight: 800;
       display: flex;
       align-items: center;
@@ -897,32 +920,45 @@
 
     .ctrl-dir-group {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       flex-wrap: wrap;
     }
 
     .seg-btn-group {
       display: flex;
       background: var(--bg-surface);
-      border-radius: var(--radius-sm);
-      padding: 2px;
-      gap: 2px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px;
+      gap: 3px;
     }
 
     .seg-btn {
       background: none;
       border: none;
-      color: var(--text-dim);
-      font-size: 0.72rem;
+      color: var(--text-sub);
+      font-size: 0.84rem;
       font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 3px;
+      padding: 8px 14px;
+      min-height: 38px;
+      border-radius: 4px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      touch-action: manipulation;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+
+    .seg-btn:active {
+      transform: scale(0.96);
     }
 
     .seg-btn.active {
       background: var(--primary);
       color: #fff;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
     }
 
     /* GPS 當前所在交流道置中聚焦與脈絡速覽卡 */
@@ -6826,14 +6862,21 @@
             }
             updateGpsMarkerOnMap();
           } else if (AppState.currentView === 'index') {
-            renderIndexView();
+            if (!AppState.hasInitGpsSorted) {
+              AppState.hasInitGpsSorted = true;
+              renderIndexView();
+            }
           } else if (AppState.currentView === 'road-detail') {
             const road = ROADS_DATABASE.find(r => r.id === AppState.selectedRoadId);
             if (road) {
-              const { nearestStation } = getRoadNearestDistance(road, newLat, newLng);
+              const { nearestStation, minDist } = getRoadNearestDistance(road, newLat, newLng);
               const hasStationChanged = (AppState.lastNearestStationName !== nearestStation.name);
-              AppState.lastNearestStationName = nearestStation.name;
-              renderRoadDetailView();
+              const hasDistChanged = Math.abs((AppState.lastNearestMinDist || 0) - minDist) >= 0.5;
+              if (hasStationChanged || hasDistChanged) {
+                AppState.lastNearestStationName = nearestStation.name;
+                AppState.lastNearestMinDist = minDist;
+                renderRoadDetailView();
+              }
             }
           }
         },
@@ -6864,7 +6907,9 @@
       AppState.userLocation = null;
       AppState.userSpeed = 0;
       AppState.isLocating = false;
+      AppState.hasInitGpsSorted = false;
       AppState.lastNearestStationName = null;
+      AppState.lastNearestMinDist = null;
 
       if (AppState.gpsMarker && AppState.mapInstance) {
         try { AppState.mapInstance.removeLayer(AppState.gpsMarker); } catch (e) {}
