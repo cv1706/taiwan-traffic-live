@@ -5742,18 +5742,7 @@
       return null;
     }
 
-      // 備用：地名關鍵字比對
-      const nameA = cleanStationKeyword(fromStation.name);
-      if (nameA) {
-        for (const [vdId, val] of Object.entries(dataMap)) {
-          if (vdId.includes(nameA)) {
-            return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
-          }
-        }
-      }
 
-      return null;
-    }
 
     /**
      * 獲取道路即時路況數據 (優先解析即時中繼數值，斷線時自動平滑備援)
