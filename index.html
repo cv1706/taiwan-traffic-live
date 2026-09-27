@@ -6196,29 +6196,45 @@
     }
 
     /**
-     * 幾何雙軌平移演算法：依據台灣靠右行駛習慣，將相鄰兩站折線拆分為順向（南下/東向）與逆向（北上/西向）
+     * 幾何連續平滑軌道演算法：計算整條道路所有測站的連續平移頂點鏈，消除相鄰路段之間的任何缺口或斷線
      */
-    function getOffsetSegment(p1, p2, offsetMeters) {
-      const dLat = p2.lat - p1.lat;
-      const dLng = p2.lng - p1.lng;
-      const len = Math.sqrt(dLat * dLat + dLng * dLng);
-      if (len === 0) return { forward: [[p1.lat, p1.lng], [p2.lat, p2.lng]], reverse: [[p1.lat, p1.lng], [p2.lat, p2.lng]] };
+    function computeContinuousTrack(stations, offsetMeters) {
+      const n = stations.length;
+      if (n < 2) return [];
 
-      // 經緯度微幅法向量 (向右側法向旋轉 90度: [-dLng, dLat])
-      const scale = (offsetMeters / 111000) / len;
-      const nLat = -dLng * scale;
-      const nLng = dLat * scale;
+      if (offsetMeters === 0) {
+        return stations.map(s => [s.lat, s.lng]);
+      }
 
-      return {
-        forward: [
-          [p1.lat + nLat, p1.lng + nLng],
-          [p2.lat + nLat, p2.lng + nLng]
-        ],
-        reverse: [
-          [p1.lat - nLat, p1.lng - nLng],
-          [p2.lat - nLat, p2.lng - nLng]
-        ]
-      };
+      const segNormals = [];
+      for (let i = 0; i < n - 1; i++) {
+        const dLat = stations[i+1].lat - stations[i].lat;
+        const dLng = stations[i+1].lng - stations[i].lng;
+        const len = Math.sqrt(dLat * dLat + dLng * dLng);
+        if (len === 0) {
+          segNormals.push({ lat: 0, lng: 0 });
+        } else {
+          const scale = (offsetMeters / 111000) / len;
+          segNormals.push({ lat: -dLng * scale, lng: dLat * scale });
+        }
+      }
+
+      const offsetPts = [];
+      for (let i = 0; i < n; i++) {
+        let nLat = 0, nLng = 0;
+        if (i === 0) {
+          nLat = segNormals[0].lat;
+          nLng = segNormals[0].lng;
+        } else if (i === n - 1) {
+          nLat = segNormals[n - 2].lat;
+          nLng = segNormals[n - 2].lng;
+        } else {
+          nLat = (segNormals[i - 1].lat + segNormals[i].lat) / 2;
+          nLng = (segNormals[i - 1].lng + segNormals[i].lng) / 2;
+        }
+        offsetPts.push([stations[i].lat + nLat, stations[i].lng + nLng]);
+      }
+      return offsetPts;
     }
 
     function buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev) {
@@ -6274,6 +6290,14 @@
 
         const stationsFwd = trafficFwd.stations;
         const stationsRev = trafficRev.stations;
+        const rawStations = stationsFwd.map(s => s.station);
+
+        const isDual = (!AppState.selectedMapDir || AppState.selectedMapDir === 'both');
+        const offsetFwd = isDual ? 90 : 0;
+        const offsetRev = isDual ? -90 : 0;
+
+        const trackFwd = computeContinuousTrack(rawStations, offsetFwd);
+        const trackRev = computeContinuousTrack(rawStations, offsetRev);
 
         for (let i = 0; i < stationsFwd.length - 1; i++) {
           const st1 = stationsFwd[i].station;
@@ -6289,14 +6313,12 @@
           const colorFwd = getSpeedHex(speedFwd);
           const colorRev = getSpeedHex(speedRev);
 
-          const offsets = getOffsetSegment(st1, st2, 135);
-
           // 順向折線 (南下 / 東向 - 靠右側/外軌)
-          if (showFwd) {
-            const polyFwd = L.polyline(offsets.forward, {
+          if (showFwd && trackFwd[i] && trackFwd[i+1]) {
+            const polyFwd = L.polyline([trackFwd[i], trackFwd[i+1]], {
               color: colorFwd,
-              weight: 4.5,
-              opacity: 0.92,
+              weight: 5,
+              opacity: 0.95,
               lineCap: 'round',
               lineJoin: 'round'
             }).addTo(AppState.mapLayerGroup);
@@ -6318,11 +6340,11 @@
           }
 
           // 逆向折線 (北上 / 西向 - 靠左側/內軌)
-          if (showRev) {
-            const polyRev = L.polyline(offsets.reverse, {
+          if (showRev && trackRev[i] && trackRev[i+1]) {
+            const polyRev = L.polyline([trackRev[i], trackRev[i+1]], {
               color: colorRev,
-              weight: 4.5,
-              opacity: 0.92,
+              weight: 5,
+              opacity: 0.95,
               lineCap: 'round',
               lineJoin: 'round'
             }).addTo(AppState.mapLayerGroup);
