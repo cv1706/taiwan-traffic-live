@@ -6158,10 +6158,6 @@
       });
 
       layer.addTo(AppState.mapInstance);
-      try { layer.bringToBack(); } catch (e) {}
-      if (AppState.mapLayerGroup && typeof AppState.mapLayerGroup.bringToFront === 'function') {
-        try { AppState.mapLayerGroup.bringToFront(); } catch (e) {}
-      }
       AppState.currentTileLayer = layer;
 
       const btn = document.getElementById('fabThemeBtn');
