@@ -6123,6 +6123,60 @@
       initLeafletMap();
     }
 
+    const TILE_THEMES = [
+      { id: 'dark', name: '深色戰情', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', subdomains: 'abcd', maxZoom: 19 },
+      { id: 'osm', name: '標準街道', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: 'abc', maxZoom: 19 },
+      { id: 'light', name: '淺色簡約', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', subdomains: 'abcd', maxZoom: 19 }
+    ];
+
+    function toggleMapTileTheme() {
+      const current = localStorage.getItem('traffic_tile_theme') || 'dark';
+      const curIdx = TILE_THEMES.findIndex(t => t.id === current);
+      const nextIdx = (curIdx + 1) % TILE_THEMES.length;
+      const nextTheme = TILE_THEMES[nextIdx];
+      localStorage.setItem('traffic_tile_theme', nextTheme.id);
+      applyMapTileTheme(nextTheme);
+    }
+
+    function applyMapTileTheme(theme) {
+      if (!AppState.mapInstance) return;
+      if (AppState.currentTileLayer) {
+        try { AppState.mapInstance.removeLayer(AppState.currentTileLayer); } catch (e) {}
+      }
+
+      const layer = L.tileLayer(theme.url, {
+        attribution: '&copy; CartoDB & OpenStreetMap',
+        subdomains: theme.subdomains,
+        maxZoom: theme.maxZoom,
+        minZoom: 6,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
+        crossOrigin: true
+      });
+
+      // 瓦片載入逾時或錯誤時，自動無感切換至 OSM CDN 備援節點
+      layer.on('tileerror', function(error) {
+        const tile = error.tile;
+        if (tile && !tile.dataset.retried) {
+          tile.dataset.retried = 'true';
+          const coords = error.coords;
+          if (coords) {
+            tile.src = `https://tile.openstreetmap.org/${coords.z}/${coords.x}/${coords.y}.png`;
+          }
+        }
+      });
+
+      layer.addTo(AppState.mapInstance);
+      AppState.currentTileLayer = layer;
+      if (AppState.mapLayerGroup) {
+        AppState.mapLayerGroup.bringToFront();
+      }
+
+      const btn = document.getElementById('btnTileTheme');
+      if (btn) btn.textContent = `🗺️ ${theme.name}`;
+    }
+
     function initLeafletMap() {
       const mapEl = document.getElementById('map');
       if (!mapEl) return;
@@ -6149,21 +6203,15 @@
         if (fab) fab.classList.remove('active');
       });
 
-      // 高效暗色底圖瓦片 (配置高容量緩衝與無延遲更新)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; CartoDB & OpenStreetMap',
-        subdomains: 'abcd',
-        maxZoom: 19,
-        keepBuffer: 8,
-        updateWhenIdle: false,
-        updateWhenZooming: false,
-        crossOrigin: true
-      }).addTo(map);
-
       const layerGroup = L.layerGroup().addTo(map);
       AppState.mapInstance = map;
       AppState.mapLayerGroup = layerGroup;
       AppState.gpsMarker = null;
+
+      // 載入使用者偏好或預設深色底圖
+      const savedThemeId = localStorage.getItem('traffic_tile_theme') || 'dark';
+      const initialTheme = TILE_THEMES.find(t => t.id === savedThemeId) || TILE_THEMES[0];
+      applyMapTileTheme(initialTheme);
 
       drawRoadNetworkOnMap();
       if (AppState.userLocation) {
@@ -6172,8 +6220,8 @@
 
       // 多段非同步尺寸校準，徹底防止手機版 DOM 未就緒導致的地圖灰屏或延遲
       requestAnimationFrame(() => { map.invalidateSize(); });
-      setTimeout(() => { map.invalidateSize(); }, 100);
-      setTimeout(() => { map.invalidateSize(); }, 350);
+      setTimeout(() => { map.invalidateSize(); }, 80);
+      setTimeout(() => { map.invalidateSize(); }, 300);
       setTimeout(() => { map.invalidateSize(); }, 800);
 
       // 當手機切換回前台或轉向時自動校準圖層
