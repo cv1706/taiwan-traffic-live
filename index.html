@@ -5645,8 +5645,10 @@
       const dirPrefix = direction || 'N';
       const targetK = fromStation.k;
 
-      let bestMatch = null;
-      let minDeltaK = 5.0; // 容許 5 公里以內的鄰近 VD 偵測點
+      let bestMainline = null;
+      let minDeltaMainline = 5.0;
+      let bestAny = null;
+      let minDeltaAny = 5.0;
 
       if (isFreeway) {
         // 國道精確比對：VD-N{num}- (排除 N10 誤配 N1 等問題)
@@ -5662,9 +5664,18 @@
             if (kMatch && kMatch[1]) {
               const vdK = parseFloat(kMatch[1]);
               const delta = Math.abs(vdK - targetK);
-              if (delta < minDeltaK) {
-                minDeltaK = delta;
-                bestMatch = val;
+              
+              // 判定是否為國道主線 (Mainline) 斷面：包含 -M-、-N-、LOOP、RS，且排除 -I- (入口)、-O- (出口)、-C- (集散道)
+              const isMainline = (vdId.includes('-M-') || vdId.includes('-N-') || vdId.includes('-LOOP') || vdId.includes('-RS')) &&
+                                 !vdId.includes('-I-') && !vdId.includes('-O-') && !vdId.includes('-C-') && !vdId.includes('-B-');
+
+              if (isMainline && delta < minDeltaMainline) {
+                minDeltaMainline = delta;
+                bestMainline = val;
+              }
+              if (delta < minDeltaAny) {
+                minDeltaAny = delta;
+                bestAny = val;
               }
             }
           }
@@ -5679,16 +5690,23 @@
             if (parts.length >= 5 && /^\d+$/.test(parts[3])) {
               const vdK = parseFloat(parts[3]);
               const delta = Math.abs(vdK - targetK);
-              if (delta < minDeltaK) {
-                minDeltaK = delta;
-                bestMatch = val;
+              const isRamp = vdId.includes('-I-') || vdId.includes('-O-') || vdId.includes('-C-');
+
+              if (!isRamp && delta < minDeltaMainline) {
+                minDeltaMainline = delta;
+                bestMainline = val;
+              }
+              if (delta < minDeltaAny) {
+                minDeltaAny = delta;
+                bestAny = val;
               }
             }
           }
         }
       }
 
-      // 若里程匹配到最佳 VD
+      // 嚴格優先採用主線 VD 數據
+      const bestMatch = bestMainline || bestAny;
       if (bestMatch) {
         return {
           TravelSpeed: bestMatch.speed,
