@@ -5739,19 +5739,21 @@
           }
         }
 
-        // 離線備援或無回傳時之平滑處理
+        // 離線備援或無回傳時之平滑處理 (以真實各級道路速限標準順暢常模為準，不虛構塞車)
         if (avgSpeed < 0) {
-          const seed = (st.k * 7 + idx * 13 + now.getMinutes()) % 100;
-          let baseSpeed = 85;
-          if (st.isTunnel) {
-            baseSpeed = (direction === 'N') ? 42 : 58;
-          } else if (road.id === 'freeway-1' && (st.name.includes('五股') || st.name.includes('林口'))) {
-            baseSpeed = 48;
+          let baseSpeed = 95;
+          if (road.type === 'freeway') {
+            baseSpeed = 95;
+          } else if (road.type === 'express') {
+            baseSpeed = 80;
           } else if (road.id === 'provincial-14a') {
-            baseSpeed = 35;
+            baseSpeed = 40;
+          } else if (road.type === 'provincial') {
+            baseSpeed = 60;
           }
 
-          avgSpeed = Math.max(20, Math.min(110, Math.round(baseSpeed + ((seed * 3) % 25) - 10)));
+          avgSpeed = baseSpeed;
+          statusType = 'stale';
         }
 
         // 車道時速封裝 (優先採用 VD 真實各車道讀數)
@@ -5793,14 +5795,7 @@
         });
       }
 
-      if (incidents.length === 0) {
-        if (road.id === 'freeway-5') {
-          if (direction === 'S') incidents.push({ type: 'warn', text: '國5 南下 15k-20k (雪隧前半段) 車多慢行' });
-          else incidents.push({ type: 'alert', text: '國5 北上 28k (頭城端洞口) 回堵約 2.5km' });
-        } else if (road.id === 'freeway-1' && direction === 'S') {
-          incidents.push({ type: 'warn', text: '國1 南下 41.5k 林口爬坡段車多' });
-        }
-      }
+
 
       return {
         roadId: road.id,
