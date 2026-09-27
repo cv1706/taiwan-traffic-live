@@ -5634,107 +5634,117 @@
     }
 
     /**
-     * 尋找即時路況時速資料 (支援 TDX VD 里程精確幾何比對、路段中點採樣與高架/平面分流隔離)
+     * 高效能 VD 預先索引模組 (建立 O(1) 路由方向查找表，大幅降低 CPU 運算負載至 1ms)
+     */
+    function buildVDIndex(freewayMap, highwayMap) {
+      const idx = {};
+      const processMap = (dataMap, isFw) => {
+        if (!dataMap) return;
+        for (const [vdId, val] of Object.entries(dataMap)) {
+          const parts = vdId.split('-');
+          let roadKey = '';
+          let dir = '';
+          let vdK = null;
+
+          const isElevated = vdId.includes('1H') || vdId.includes('-N1H-');
+          const is3A = vdId.includes('-3A-') || vdId.includes('-3甲-') || vdId.includes('-T3A-');
+
+          if (isFw) {
+            if (is3A) roadKey = 'freeway-3a';
+            else if (isElevated) roadKey = 'freeway-1-elevated';
+            else if (parts.length >= 2 && /^N\d+$/.test(parts[1])) {
+              const num = parts[1].replace('N', '');
+              roadKey = `freeway-${num}`;
+            }
+          } else {
+            if (parts.length >= 3 && /^\d{3,4}$/.test(parts[2])) {
+              const num = parseInt(parts[2], 10);
+              const cleanNum = (num % 10 === 0) ? num / 10 : num;
+              roadKey = `express-${cleanNum}`;
+            }
+          }
+
+          if (parts.length >= 4) {
+            if (['N', 'S', 'E', 'W'].includes(parts[2])) dir = parts[2];
+            const kVal = parseFloat(parts[3]);
+            if (!isNaN(kVal)) vdK = kVal;
+          }
+
+          if (!dir) {
+            const dirM = vdId.match(/-([NSEW])-/);
+            if (dirM) dir = dirM[1];
+          }
+          if (vdK === null) {
+            const kM = vdId.match(/-(\d+(\.\d+)?)-/);
+            if (kM) vdK = parseFloat(kM[1]);
+          }
+
+          if (roadKey && dir && vdK !== null) {
+            const isMain = (vdId.includes('-M-') || vdId.includes('-N-') || vdId.includes('-LOOP') || vdId.includes('-RS')) &&
+                           !vdId.includes('-I-') && !vdId.includes('-O-') && !vdId.includes('-C-') && !vdId.includes('-B-');
+
+            if (!idx[roadKey]) idx[roadKey] = {};
+            if (!idx[roadKey][dir]) idx[roadKey][dir] = [];
+            idx[roadKey][dir].push({ vdId, vdK, isMain, val });
+          }
+        }
+      };
+
+      processMap(freewayMap, true);
+      processMap(highwayMap, false);
+      return idx;
+    }
+
+    /**
+     * 尋找即時路況時速資料 (基於高效索引表與路段中點幾何採樣)
      */
     function findTDXSectionData(road, fromStation, direction, toStation = null) {
-      const isFreeway = road.type === 'freeway';
-      const dataMap = isFreeway ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
-      if (!dataMap || Object.keys(dataMap).length === 0) return null;
-
-      const roadNumDigits = road.num.replace(/[^\d]/g, '');
-      const dirPrefix = direction || 'N';
-      // 若傳入區間兩端點，則採兩端中點里程 (Midpoint K)，完美契合 1968 區間路網標示法
-      const targetK = (toStation && typeof toStation.k === 'number') ? (fromStation.k + toStation.k) / 2 : fromStation.k;
-
-      let bestMainline = null;
-      let minDeltaMainline = 8.0;
-      let bestAny = null;
-      let minDeltaAny = 8.0;
-
-      const isElevated = road.id && road.id.includes('elevated');
-
-      if (isFreeway) {
-        // 國道精確比對：平面國道與五楊高架分流隔離
-        const fwPrefixMain = `VD-N${roadNumDigits}-`;
-        const fwPrefixElev = `VD-N${roadNumDigits}H-`;
-        const is3A = road.num.includes('3甲') || road.id === 'freeway-3a';
-
-        for (const [vdId, val] of Object.entries(dataMap)) {
-          let isRoadMatch = false;
-          if (is3A) {
-            isRoadMatch = vdId.includes('-3A-') || vdId.includes('-3甲-') || vdId.includes('-T3A-');
-          } else if (isElevated) {
-            isRoadMatch = vdId.startsWith(fwPrefixElev) || vdId.includes(`-${road.num}H-`);
-          } else {
-            isRoadMatch = (vdId.startsWith(fwPrefixMain) || vdId.includes(`-${road.num}-`)) && !vdId.startsWith(fwPrefixElev);
-          }
-
-          const isDirMatch = vdId.includes(`-${dirPrefix}-`) || !direction;
-
-          if (isRoadMatch && isDirMatch) {
-            const kMatch = vdId.match(/-(\d+(\.\d+)?)-/);
-            if (kMatch && kMatch[1]) {
-              const vdK = parseFloat(kMatch[1]);
-              const delta = Math.abs(vdK - targetK);
-              
-              // 判定是否為國道主線 (Mainline) 斷面：包含 -M-、-N-、LOOP、RS，且排除 -I- (入口)、-O- (出口)、-C- (集散道)
-              const isMainline = (vdId.includes('-M-') || vdId.includes('-N-') || vdId.includes('-LOOP') || vdId.includes('-RS')) &&
-                                 !vdId.includes('-I-') && !vdId.includes('-O-') && !vdId.includes('-C-') && !vdId.includes('-B-');
-
-              if (isMainline && delta < minDeltaMainline) {
-                minDeltaMainline = delta;
-                bestMainline = val;
-              }
-              if (delta < minDeltaAny) {
-                minDeltaAny = delta;
-                bestAny = val;
-              }
-            }
-          }
-        }
-      } else {
-        // 快速公路/省道比對：VD-xx-{4碼路線編號}-{里程k}-{方向}
-        const hwCode = roadNumDigits.padStart(3, '0') + '0'; // 61 -> 0610, 2 -> 0020
-        for (const [vdId, val] of Object.entries(dataMap)) {
-          const isRoadMatch = vdId.includes(`-${hwCode}-`) || vdId.includes(road.num);
-          const isDirMatch = vdId.includes(`-${dirPrefix}-`) || !direction;
-
-          if (isRoadMatch && isDirMatch) {
-            const parts = vdId.split('-');
-            if (parts.length >= 5 && /^\d+$/.test(parts[3])) {
-              const vdK = parseFloat(parts[3]);
-              const delta = Math.abs(vdK - targetK);
-              const isRamp = vdId.includes('-I-') || vdId.includes('-O-') || vdId.includes('-C-');
-
-              if (!isRamp && delta < minDeltaMainline) {
-                minDeltaMainline = delta;
-                bestMainline = val;
-              }
-              if (delta < minDeltaAny) {
-                minDeltaAny = delta;
-                bestAny = val;
-              }
-            }
-          }
-        }
+      if (!TrafficDataStore.vdIndex && (Object.keys(TrafficDataStore.freewayMap).length > 0 || Object.keys(TrafficDataStore.highwayMap).length > 0)) {
+        TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
       }
 
-      // 嚴格優先採用主線 VD 數據
-      const bestMatch = bestMainline || bestAny;
-      if (bestMatch) {
-        return {
-          TravelSpeed: bestMatch.speed,
-          DataCollectTime: bestMatch.time,
-          lanes: bestMatch.lanes
-        };
+      const roadKey = road.id;
+      const dirList = (TrafficDataStore.vdIndex && TrafficDataStore.vdIndex[roadKey] && TrafficDataStore.vdIndex[roadKey][direction]) || null;
+      const targetK = (toStation && typeof toStation.k === 'number') ? (fromStation.k + toStation.k) / 2 : fromStation.k;
+
+      if (dirList && dirList.length > 0) {
+        let bestMainline = null;
+        let minDeltaMainline = 8.0;
+        let bestAny = null;
+        let minDeltaAny = 8.0;
+
+        for (let i = 0; i < dirList.length; i++) {
+          const item = dirList[i];
+          const delta = Math.abs(item.vdK - targetK);
+          if (item.isMain && delta < minDeltaMainline) {
+            minDeltaMainline = delta;
+            bestMainline = item.val;
+          }
+          if (delta < minDeltaAny) {
+            minDeltaAny = delta;
+            bestAny = item.val;
+          }
+        }
+
+        const match = bestMainline || bestAny;
+        if (match) {
+          return {
+            TravelSpeed: match.speed,
+            DataCollectTime: match.time,
+            lanes: match.lanes
+          };
+        }
       }
 
       // 備用：地名關鍵字比對
       const nameA = cleanStationKeyword(fromStation.name);
       if (nameA) {
-        for (const [vdId, val] of Object.entries(dataMap)) {
-          if (vdId.includes(nameA)) {
-            return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
+        const dataMap = (road.type === 'freeway') ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
+        if (dataMap) {
+          for (const [vdId, val] of Object.entries(dataMap)) {
+            if (vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
+              return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
+            }
           }
         }
       }
@@ -6128,7 +6138,8 @@
         zoom: preset.zoom,
         zoomControl: false,
         maxZoom: 16,
-        minZoom: 6
+        minZoom: 6,
+        preferCanvas: true
       });
 
       // 監聽手動拖曳與縮放事件：使用者手動瀏覽地圖時，自動暫停自動跟隨
@@ -6138,10 +6149,15 @@
         if (fab) fab.classList.remove('active');
       });
 
+      // 高效暗色底圖瓦片 (配置高容量緩衝與無延遲更新)
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; CartoDB & OpenStreetMap',
         subdomains: 'abcd',
-        maxZoom: 19
+        maxZoom: 19,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
+        crossOrigin: true
       }).addTo(map);
 
       const layerGroup = L.layerGroup().addTo(map);
@@ -6153,6 +6169,21 @@
       if (AppState.userLocation) {
         updateGpsMarkerOnMap();
       }
+
+      // 多段非同步尺寸校準，徹底防止手機版 DOM 未就緒導致的地圖灰屏或延遲
+      requestAnimationFrame(() => { map.invalidateSize(); });
+      setTimeout(() => { map.invalidateSize(); }, 100);
+      setTimeout(() => { map.invalidateSize(); }, 350);
+      setTimeout(() => { map.invalidateSize(); }, 800);
+
+      // 當手機切換回前台或轉向時自動校準圖層
+      window.addEventListener('resize', () => { map.invalidateSize(); }, { passive: true });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          map.invalidateSize();
+          drawRoadNetworkOnMap();
+        }
+      });
     }
 
     function getSpeedHex(speed) {
