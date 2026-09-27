@@ -6060,8 +6060,11 @@
           <!-- 地圖容器 -->
           <div id="map"></div>
 
-          <!-- 右側浮動按鈕 (定位跟隨、一鍵強制刷新) -->
+          <!-- 右側浮動按鈕 (底圖切換、一鍵強制刷新、定位跟隨) -->
           <div class="map-fab-group">
+            <button class="map-fab" id="fabThemeBtn" onclick="toggleMapTileTheme()" title="切換地圖底圖主題 (深色戰情 / 標準街道 / 彩色街道)">
+              🌙
+            </button>
             <button class="map-fab" id="fabReloadBtn" onclick="manualRefreshTraffic()" title="立即重新獲取即時路況">
               🔄
             </button>
@@ -6124,9 +6127,9 @@
     }
 
     const TILE_THEMES = [
-      { id: 'dark', name: '深色戰情', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', subdomains: 'abcd', maxZoom: 19 },
-      { id: 'osm', name: '標準街道', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', subdomains: 'abc', maxZoom: 19 },
-      { id: 'light', name: '淺色簡約', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', subdomains: 'abcd', maxZoom: 19 }
+      { id: 'dark', name: '深色戰情', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attribution: '&copy; Esri & OpenStreetMap' },
+      { id: 'street', name: '標準街道', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18, attribution: '&copy; Esri' },
+      { id: 'topo', name: '地形地貌', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18, attribution: '&copy; Esri' }
     ];
 
     function toggleMapTileTheme() {
@@ -6145,9 +6148,8 @@
       }
 
       const layer = L.tileLayer(theme.url, {
-        attribution: '&copy; CartoDB & OpenStreetMap',
-        subdomains: theme.subdomains,
-        maxZoom: theme.maxZoom,
+        attribution: theme.attribution || '&copy; Esri',
+        maxZoom: theme.maxZoom || 18,
         minZoom: 6,
         keepBuffer: 8,
         updateWhenIdle: false,
@@ -6155,26 +6157,28 @@
         crossOrigin: true
       });
 
-      // 瓦片載入逾時或錯誤時，自動無感切換至 OSM CDN 備援節點
-      layer.on('tileerror', function(error) {
-        const tile = error.tile;
-        if (tile && !tile.dataset.retried) {
-          tile.dataset.retried = 'true';
-          const coords = error.coords;
-          if (coords) {
-            tile.src = `https://tile.openstreetmap.org/${coords.z}/${coords.x}/${coords.y}.png`;
-          }
-        }
-      });
-
       layer.addTo(AppState.mapInstance);
-      AppState.currentTileLayer = layer;
-      if (AppState.mapLayerGroup) {
-        AppState.mapLayerGroup.bringToFront();
+      try { layer.bringToBack(); } catch (e) {}
+      if (AppState.mapLayerGroup && typeof AppState.mapLayerGroup.bringToFront === 'function') {
+        try { AppState.mapLayerGroup.bringToFront(); } catch (e) {}
       }
+      AppState.currentTileLayer = layer;
 
-      const btn = document.getElementById('btnTileTheme');
-      if (btn) btn.textContent = `🗺️ ${theme.name}`;
+      const btn = document.getElementById('fabThemeBtn');
+      if (btn) btn.textContent = theme.id === 'dark' ? '🌙' : (theme.id === 'street' ? '🏙️' : '⛰️');
+    }
+
+    async function manualRefreshTraffic() {
+      const btn = document.getElementById('fabReloadBtn');
+      if (btn) btn.textContent = '⏳';
+      await fetchLiveTrafficData(true);
+      if (AppState.currentView === 'map') {
+        drawRoadNetworkOnMap();
+      }
+      if (btn) {
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = '🔄'; }, 1000);
+      }
     }
 
     function initLeafletMap() {
@@ -6203,7 +6207,7 @@
         if (fab) fab.classList.remove('active');
       });
 
-      const layerGroup = L.layerGroup().addTo(map);
+      const layerGroup = L.featureGroup().addTo(map);
       AppState.mapInstance = map;
       AppState.mapLayerGroup = layerGroup;
       AppState.gpsMarker = null;
