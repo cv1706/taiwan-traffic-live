@@ -6263,9 +6263,18 @@
           const spdF = stItem.avgSpeed;
           const spdR = stationsRev[idx] ? stationsRev[idx].avgSpeed : spdF;
 
+          let nodeSpeed = spdF;
+          if (AppState.selectedMapDir === 'reverse') {
+            nodeSpeed = spdR;
+          } else if (AppState.selectedMapDir === 'forward') {
+            nodeSpeed = spdF;
+          } else {
+            nodeSpeed = (spdF > 0 && spdR > 0) ? Math.round((spdF + spdR) / 2) : Math.max(spdF, spdR);
+          }
+
           const circle = L.circleMarker([st.lat, st.lng], {
             radius: 3.5,
-            fillColor: getSpeedHex(Math.min(spdF, spdR)),
+            fillColor: getSpeedHex(nodeSpeed),
             color: '#0b0f19',
             weight: 1.5,
             fillOpacity: 1
