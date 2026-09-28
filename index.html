@@ -5794,10 +5794,20 @@
         for (let i = 0; i < dirList.length; i++) {
           const item = dirList[i];
           const delta = Math.abs(item.vdK - targetK);
+          const spd = item.val.speed;
+          const laneCount = (item.val.lanes || []).length;
+
           // 排除單一故障測點 (如 Speed <= 10 且非全線壅塞之線圈讀數異常)
-          if (item.isMain && item.val.speed > 10 && delta < minDeltaMainline) {
-            minDeltaMainline = delta;
-            bestMainline = item.val;
+          if (item.isMain && spd > 10 && delta < minDeltaMainline) {
+            // 在快速公路上，排除單線道平面側車道/減速引道低速測點 (<= 45 km/h) 誤污染高架主線
+            if (road.type === 'express' && spd <= 45 && laneCount === 1) {
+              if (!bestMainline) {
+                bestMainline = item.val;
+              }
+            } else {
+              minDeltaMainline = delta;
+              bestMainline = item.val;
+            }
           }
         }
 
@@ -5844,7 +5854,12 @@
         let liveLanes = null;
 
         if (isLive) {
-          const matched = findTDXSectionData(road, st, direction);
+          // 對齊區間幾何中點：依行進方向決定相鄰站點，使列表與地圖完全一致
+          const nextSt = (direction === 'N' || direction === 'W') 
+            ? (idx > 0 ? road.stations[idx - 1] : (idx < totalSts - 1 ? road.stations[idx + 1] : null))
+            : (idx < totalSts - 1 ? road.stations[idx + 1] : (idx > 0 ? road.stations[idx - 1] : null));
+
+          const matched = findTDXSectionData(road, st, direction, nextSt);
           if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null && matched.TravelSpeed > 0) {
             avgSpeed = Math.round(matched.TravelSpeed);
             liveLanes = matched.lanes;
