@@ -6412,7 +6412,7 @@
       }
 
       if (finalSpeedRev === null || finalSpeedRev === undefined || isNaN(finalSpeedRev) || finalSpeedRev <= 0) {
-        const segRev = findTDXSectionData(road, st1, dir2, st2);
+        const segRev = findTDXSectionData(road, st2 || st1, dir2, st1);
         finalSpeedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) 
           ? Math.round(segRev.TravelSpeed) 
           : (finalSpeedFwd || defaultSpeed);
@@ -6488,7 +6488,7 @@
           const segRev = findTDXSectionData(road, st1, dir2, st2);
 
           const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
-          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
+          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i+1] ? stationsRev[i+1].avgSpeed : speedFwd);
 
           const colorFwd = getSpeedHex(speedFwd, road.type);
           const colorRev = getSpeedHex(speedRev, road.type);
