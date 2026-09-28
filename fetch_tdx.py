@@ -66,7 +66,8 @@ def parse_vd_lives(data):
         for flow in item.get("LinkFlows", []):
             for lane in flow.get("Lanes", []):
                 spd = lane.get("Speed")
-                if spd is not None and spd > 0:
+                # TDX 標準：0 km/h 代表真實嚴重壅塞停滯；255 代表未偵測/故障碼；有效時速範圍 0 <= spd <= 160
+                if spd is not None and isinstance(spd, (int, float)) and 0 <= spd <= 160:
                     speeds.append(round(spd))
 
         if speeds:

@@ -5509,7 +5509,8 @@
           const speeds = [];
           for (const flow of (item.LinkFlows || [])) {
             for (const lane of (flow.Lanes || [])) {
-              if (lane.Speed !== undefined && lane.Speed !== null && lane.Speed > 0) {
+              // TDX 標準：0 km/h 代表真實嚴重壅塞停滯；255 代表未偵測/故障碼；有效時速範圍 0 <= spd <= 160
+              if (lane.Speed !== undefined && lane.Speed !== null && typeof lane.Speed === 'number' && lane.Speed >= 0 && lane.Speed <= 160) {
                 speeds.push(Math.round(lane.Speed));
               }
             }
@@ -5638,30 +5639,25 @@
      */
     function buildVDIndex(freewayMap, highwayMap) {
       const idx = {};
-      const processMap = (dataMap, isFw) => {
-        if (!dataMap) return;
-        for (const [vdId, val] of Object.entries(dataMap)) {
+
+      // 1. 處理國道高速公路 VD
+      if (freewayMap) {
+        for (const [vdId, val] of Object.entries(freewayMap)) {
           const parts = vdId.split('-');
           let roadKey = '';
           let dir = '';
           let vdK = null;
 
           const isElevated = vdId.includes('1H') || vdId.includes('-N1H-');
-          const is3A = vdId.includes('-3A-') || vdId.includes('-3甲-') || vdId.includes('-T3A-');
+          const is3A = vdId.includes('3A') || vdId.includes('3甲') || vdId.includes('T3A') || vdId.includes('N3A');
 
-          if (isFw) {
-            if (is3A) roadKey = 'freeway-3a';
-            else if (isElevated) roadKey = 'freeway-1-elevated';
-            else if (parts.length >= 2 && /^N\d+$/.test(parts[1])) {
-              const num = parts[1].replace('N', '');
-              roadKey = `freeway-${num}`;
-            }
-          } else {
-            if (parts.length >= 3 && /^\d{3,4}$/.test(parts[2])) {
-              const num = parseInt(parts[2], 10);
-              const cleanNum = (num % 10 === 0) ? num / 10 : num;
-              roadKey = `express-${cleanNum}`;
-            }
+          if (is3A) {
+            roadKey = 'freeway-3a';
+          } else if (isElevated) {
+            roadKey = 'freeway-1-elevated';
+          } else if (parts.length >= 2 && /^N\d+$/i.test(parts[1])) {
+            const num = parts[1].replace(/N/i, '');
+            roadKey = `freeway-${num}`;
           }
 
           if (parts.length >= 4) {
@@ -5688,10 +5684,67 @@
             idx[roadKey][dir].push({ vdId, vdK, isMain, val });
           }
         }
-      };
+      }
 
-      processMap(freewayMap, true);
-      processMap(highwayMap, false);
+      // 2. 處理快速公路與省道公路局 VD
+      if (highwayMap) {
+        for (const [vdId, val] of Object.entries(highwayMap)) {
+          const parts = vdId.split('-');
+          let roadKey = '';
+          let dir = '';
+          let vdK = null;
+
+          // 格式 1: VD-T74-E-20.600-M-RS
+          if (parts.length >= 4 && parts[1].startsWith('T')) {
+            const numStr = parts[1].slice(1);
+            roadKey = `express-${numStr}`;
+            if (['N', 'S', 'E', 'W'].includes(parts[2])) dir = parts[2];
+            const kVal = parseFloat(parts[3]);
+            if (!isNaN(kVal)) vdK = kVal;
+          }
+          // 格式 2: VD-28-0740-004-001 或 VD-12-0610-008-003 (公路局標準編碼)
+          else if (parts.length >= 4 && /^\d{3,4}[A-Za-z]?$/.test(parts[2])) {
+            const routeRaw = parts[2];
+            const numMatch = routeRaw.match(/^0*(\d+)/);
+            if (numMatch) {
+              const rawNum = parseInt(numMatch[1], 10);
+              const routeNum = (rawNum >= 100 && rawNum % 10 === 0) ? rawNum / 10 : rawNum;
+              if ([61, 62, 64, 65, 66, 68, 72, 74, 76, 78, 82, 84, 86, 88].includes(routeNum)) {
+                roadKey = `express-${routeNum}`;
+              } else if (routeNum === 9) {
+                roadKey = 'provincial-9-suhua';
+              } else if (routeNum === 14) {
+                roadKey = 'provincial-14a';
+              } else {
+                roadKey = `provincial-${routeNum}`;
+              }
+            }
+
+            const kVal = parseFloat(parts[3]);
+            if (!isNaN(kVal)) vdK = kVal;
+
+            const subId = parts[4] || '';
+            const isOdd = /^\d+$/.test(subId) ? (parseInt(subId, 10) % 2 !== 0) : true;
+
+            const targetRoad = ROADS_DATABASE.find(r => r.id === roadKey);
+            if (targetRoad && targetRoad.directions && targetRoad.directions.length >= 2) {
+              const d1 = targetRoad.directions[0].key;
+              const d2 = targetRoad.directions[1].key;
+              dir = isOdd ? d1 : d2;
+            } else if (!dir) {
+              dir = isOdd ? 'S' : 'N';
+            }
+          }
+
+          if (roadKey && dir && vdK !== null) {
+            const isMain = true;
+            if (!idx[roadKey]) idx[roadKey] = {};
+            if (!idx[roadKey][dir]) idx[roadKey][dir] = [];
+            idx[roadKey][dir].push({ vdId, vdK, isMain, val });
+          }
+        }
+      }
+
       return idx;
     }
 
@@ -5727,7 +5780,7 @@
         }
 
         const match = bestMainline || bestAny;
-        if (match) {
+        if (match && typeof match.speed === 'number' && match.speed >= 0) {
           return {
             TravelSpeed: match.speed,
             DataCollectTime: match.time,
@@ -5743,7 +5796,9 @@
         if (dataMap) {
           for (const [vdId, val] of Object.entries(dataMap)) {
             if (vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
-              return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
+              if (typeof val.speed === 'number' && val.speed >= 0) {
+                return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
+              }
             }
           }
         }
@@ -6355,8 +6410,8 @@
           const segFwd = findTDXSectionData(road, st1, dir1, st2);
           const segRev = findTDXSectionData(road, st1, dir2, st2);
 
-          const speedFwd = (segFwd && segFwd.TravelSpeed > 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
-          const speedRev = (segRev && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
+          const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed >= 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
+          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed >= 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
 
           const colorFwd = getSpeedHex(speedFwd);
           const colorRev = getSpeedHex(speedRev);
