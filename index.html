@@ -5509,9 +5509,18 @@
           const speeds = [];
           for (const flow of (item.LinkFlows || [])) {
             for (const lane of (flow.Lanes || [])) {
-              // TDX 標準：0 km/h 代表真實嚴重壅塞停滯；255 代表未偵測/故障碼；有效時速範圍 0 <= spd <= 160
-              if (lane.Speed !== undefined && lane.Speed !== null && typeof lane.Speed === 'number' && lane.Speed >= 0 && lane.Speed <= 160) {
-                speeds.push(Math.round(lane.Speed));
+              const spd = lane.Speed;
+              const occ = lane.Occupancy || 0;
+              // TDX / 交通偵測器標準：
+              // 1. 有效行駛車速：0 < spd <= 160
+              // 2. 當 spd == 0 時，僅在 Occupancy > 15% 時才代表車輛卡在線圈上的真實嚴重紫爆定點
+              // 3. 若 spd == 0 且 Occupancy == 0 (或為空)，代表該車道無車流通行 / 閒置車道 / 無採樣，嚴禁計入平均車速
+              if (spd !== undefined && spd !== null && typeof spd === 'number') {
+                if (spd > 0 && spd <= 160) {
+                  speeds.push(Math.round(spd));
+                } else if (spd === 0 && occ > 15) {
+                  speeds.push(0);
+                }
               }
             }
           }
@@ -5635,6 +5644,20 @@
     }
 
     /**
+     * 辨識是否為主線偵測器 (排除匝道 -I-、出口 -O-、集散道 -C-、公車專用道 -B-、匝道儀控 -R-、連絡道 -L-、地磅站 -W-、服務區 -S-)
+     */
+    function isMainlineVD(vdId) {
+      if (!vdId) return false;
+      const u = vdId.toUpperCase();
+      const isRamp = u.includes('-I-') || u.includes('-O-') || u.includes('-C-') || 
+                     u.includes('-B-') || u.includes('-R-') || u.includes('-L-') || 
+                     u.includes('-W-') || u.includes('-S-') || u.includes('-ETC-');
+      const hasMainTag = u.includes('-M-') || u.includes('-N-') || u.includes('-LOOP') || 
+                         u.includes('-RS') || u.includes('-IMAGE') || u.includes('-OH');
+      return hasMainTag && !isRamp;
+    }
+
+    /**
      * 高效能 VD 預先索引模組 (建立 O(1) 路由方向查找表，大幅降低 CPU 運算負載至 1ms)
      */
     function buildVDIndex(freewayMap, highwayMap) {
@@ -5676,8 +5699,7 @@
           }
 
           if (roadKey && dir && vdK !== null) {
-            const isMain = (vdId.includes('-M-') || vdId.includes('-N-') || vdId.includes('-LOOP') || vdId.includes('-RS')) &&
-                           !vdId.includes('-I-') && !vdId.includes('-O-') && !vdId.includes('-C-') && !vdId.includes('-B-');
+            const isMain = isMainlineVD(vdId);
 
             if (!idx[roadKey]) idx[roadKey] = {};
             if (!idx[roadKey][dir]) idx[roadKey][dir] = [];
@@ -5763,8 +5785,6 @@
       if (dirList && dirList.length > 0) {
         let bestMainline = null;
         let minDeltaMainline = 8.0;
-        let bestAny = null;
-        let minDeltaAny = 8.0;
 
         for (let i = 0; i < dirList.length; i++) {
           const item = dirList[i];
@@ -5773,30 +5793,25 @@
             minDeltaMainline = delta;
             bestMainline = item.val;
           }
-          if (delta < minDeltaAny) {
-            minDeltaAny = delta;
-            bestAny = item.val;
-          }
         }
 
-        const match = bestMainline || bestAny;
-        if (match && typeof match.speed === 'number' && match.speed >= 0) {
+        if (bestMainline && typeof bestMainline.speed === 'number' && bestMainline.speed > 0) {
           return {
-            TravelSpeed: match.speed,
-            DataCollectTime: match.time,
-            lanes: match.lanes
+            TravelSpeed: bestMainline.speed,
+            DataCollectTime: bestMainline.time,
+            lanes: bestMainline.lanes
           };
         }
       }
 
-      // 備用：地名關鍵字比對
+      // 備用：地名關鍵字比對 (嚴格限定僅比對主線 VD，嚴禁誤採匝道儀控等紅燈測點)
       const nameA = cleanStationKeyword(fromStation.name);
       if (nameA) {
         const dataMap = (road.type === 'freeway') ? TrafficDataStore.freewayMap : TrafficDataStore.highwayMap;
         if (dataMap) {
           for (const [vdId, val] of Object.entries(dataMap)) {
-            if (vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
-              if (typeof val.speed === 'number' && val.speed >= 0) {
+            if (isMainlineVD(vdId) && vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
+              if (typeof val.speed === 'number' && val.speed > 0) {
                 return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
               }
             }
@@ -5806,8 +5821,6 @@
 
       return null;
     }
-
-
 
     /**
      * 獲取道路即時路況數據 (優先解析即時中繼數值，斷線時自動平滑備援)
@@ -5826,7 +5839,7 @@
 
         if (isLive) {
           const matched = findTDXSectionData(road, st, direction);
-          if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null) {
+          if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null && matched.TravelSpeed > 0) {
             avgSpeed = Math.round(matched.TravelSpeed);
             liveLanes = matched.lanes;
             if (matched.DataCollectTime) {
@@ -5839,7 +5852,7 @@
         }
 
         // 離線備援或無回傳時之平滑處理 (以真實各級道路速限標準順暢常模為準，不虛構塞車)
-        if (avgSpeed < 0) {
+        if (avgSpeed <= 0) {
           let baseSpeed = 95;
           if (road.type === 'freeway') {
             baseSpeed = 95;
@@ -5911,7 +5924,7 @@
     }
 
     function getSpeedColor(speed) {
-      if (speed < 0) return 'var(--speed-gray)';
+      if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return 'var(--speed-gray)';
       if (speed >= 80) return 'var(--speed-green)';
       if (speed >= 60) return 'var(--speed-yellow)';
       if (speed >= 40) return 'var(--speed-orange)';
@@ -6290,7 +6303,7 @@
     }
 
     function getSpeedHex(speed) {
-      if (speed < 0) return '#64748b';
+      if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return '#64748b';
       if (speed >= 80) return '#10b981';
       if (speed >= 60) return '#f59e0b';
       if (speed >= 40) return '#f97316';
@@ -6410,8 +6423,8 @@
           const segFwd = findTDXSectionData(road, st1, dir1, st2);
           const segRev = findTDXSectionData(road, st1, dir2, st2);
 
-          const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed >= 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
-          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed >= 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
+          const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
+          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
 
           const colorFwd = getSpeedHex(speedFwd);
           const colorRev = getSpeedHex(speedRev);

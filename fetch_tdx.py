@@ -66,9 +66,16 @@ def parse_vd_lives(data):
         for flow in item.get("LinkFlows", []):
             for lane in flow.get("Lanes", []):
                 spd = lane.get("Speed")
-                # TDX 標準：0 km/h 代表真實嚴重壅塞停滯；255 代表未偵測/故障碼；有效時速範圍 0 <= spd <= 160
-                if spd is not None and isinstance(spd, (int, float)) and 0 <= spd <= 160:
-                    speeds.append(round(spd))
+                occ = lane.get("Occupancy", 0) or 0
+                # TDX / 交通偵測器標準：
+                # 1. 有效行駛車速：0 < spd <= 160
+                # 2. 當 spd == 0 時，僅在 Occupancy > 15% 時才代表車輛卡在線圈上的真實嚴重紫爆定點
+                # 3. 若 spd == 0 且 Occupancy == 0 (或為空)，代表該車道無車流通行 / 閒置車道 / 無採樣，嚴禁計入平均車速
+                if spd is not None and isinstance(spd, (int, float)):
+                    if 0 < spd <= 160:
+                        speeds.append(round(spd))
+                    elif spd == 0 and occ > 15:
+                        speeds.append(0)
 
         if speeds:
             avg_speed = round(sum(speeds) / len(speeds))
