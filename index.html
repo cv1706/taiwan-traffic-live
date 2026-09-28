@@ -5573,6 +5573,7 @@
               TrafficDataStore.updateTimeStr = data.updateTime || '';
               TrafficDataStore.lastFetchTime = now;
               TrafficDataStore.status = 'live';
+              TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
 
               // 檢查 json 是否在 15 分鐘以內
               if (data.updateTimestamp && (now / 1000 - data.updateTimestamp < 900)) {
@@ -5594,6 +5595,7 @@
               TrafficDataStore.updateTimeStr = directData.updateTime;
               TrafficDataStore.lastFetchTime = now;
               TrafficDataStore.status = 'live';
+              TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
             }
           } catch (tdxErr) {
             console.warn("TDX direct fetch fallback:", tdxErr);
@@ -5602,6 +5604,7 @@
 
         if (Object.keys(TrafficDataStore.freewayMap).length === 0) {
           TrafficDataStore.status = 'fallback';
+          TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
         }
       } catch (err) {
         TrafficDataStore.status = (Object.keys(TrafficDataStore.freewayMap).length > 0) ? 'live' : 'fallback';
@@ -5784,7 +5787,7 @@
 
       if (dirList && dirList.length > 0) {
         let bestMainline = null;
-        let minDeltaMainline = 8.0;
+        let minDeltaMainline = 15.0;
 
         for (let i = 0; i < dirList.length; i++) {
           const item = dirList[i];
@@ -6018,6 +6021,7 @@
       }
       setTimeout(() => { if (btn) btn.style.transform = ''; }, 600);
     }
+    window.manualRefresh = manualRefreshTraffic;
 
     function goBackHome() {
       const currentMode = localStorage.getItem('traffic_view_mode') || 'map';
@@ -6354,10 +6358,29 @@
     }
 
     function buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev) {
+      const defaultSpeed = (road.type === 'freeway') ? 95 : (road.type === 'express' ? 80 : 60);
+
+      let finalSpeedFwd = speedFwd;
+      let finalSpeedRev = speedRev;
+
+      if (finalSpeedFwd === null || finalSpeedFwd === undefined || isNaN(finalSpeedFwd) || finalSpeedFwd <= 0) {
+        const segFwd = findTDXSectionData(road, st1, dir1, st2);
+        finalSpeedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) 
+          ? Math.round(segFwd.TravelSpeed) 
+          : defaultSpeed;
+      }
+
+      if (finalSpeedRev === null || finalSpeedRev === undefined || isNaN(finalSpeedRev) || finalSpeedRev <= 0) {
+        const segRev = findTDXSectionData(road, st1, dir2, st2);
+        finalSpeedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) 
+          ? Math.round(segRev.TravelSpeed) 
+          : (finalSpeedFwd || defaultSpeed);
+      }
+
       const dir1Label = road.directions[0].name;
       const dir2Label = road.directions[1] ? road.directions[1].name : '逆向';
-      const colorFwd = getSpeedHex(speedFwd);
-      const colorRev = getSpeedHex(speedRev);
+      const colorFwd = getSpeedHex(finalSpeedFwd);
+      const colorRev = getSpeedHex(finalSpeedRev);
 
       const secText = st2 ? `${st1.name} ↔ ${st2.name}` : `${st1.name} (${st1.k.toFixed(1)}k)`;
 
@@ -6369,12 +6392,12 @@
           <div class="popup-dual-grid">
             <div class="popup-dir-box">
               <div class="popup-dir-label">⬇️ ${dir1Label}</div>
-              <div class="popup-dir-speed" style="color:${colorFwd}">${speedFwd > 0 ? `${speedFwd}` : '--'}<span style="font-size:0.6rem;">km/h</span></div>
+              <div class="popup-dir-speed" style="color:${colorFwd}">${finalSpeedFwd}<span style="font-size:0.6rem;">km/h</span></div>
               <button class="popup-detail-btn" onclick="openRoadDetailWithDir('${road.id}', '${dir1}')">看${dir1Label} →</button>
             </div>
             <div class="popup-dir-box">
               <div class="popup-dir-label">⬆️ ${dir2Label}</div>
-              <div class="popup-dir-speed" style="color:${colorRev}">${speedRev > 0 ? `${speedRev}` : '--'}<span style="font-size:0.6rem;">km/h</span></div>
+              <div class="popup-dir-speed" style="color:${colorRev}">${finalSpeedRev}<span style="font-size:0.6rem;">km/h</span></div>
               <button class="popup-detail-btn" onclick="openRoadDetailWithDir('${road.id}', '${dir2}')">看${dir2Label} →</button>
             </div>
           </div>
