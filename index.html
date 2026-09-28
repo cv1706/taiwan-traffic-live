@@ -5509,6 +5509,8 @@
           const speeds = [];
           for (const flow of (item.LinkFlows || [])) {
             for (const lane of (flow.Lanes || [])) {
+              const err = lane.ErrorType || 'diag0';
+              if (err && err !== 'diag0') continue;
               const spd = lane.Speed;
               const occ = lane.Occupancy || 0;
               // TDX / 交通偵測器標準：
@@ -5792,7 +5794,8 @@
         for (let i = 0; i < dirList.length; i++) {
           const item = dirList[i];
           const delta = Math.abs(item.vdK - targetK);
-          if (item.isMain && delta < minDeltaMainline) {
+          // 排除單一故障測點 (如 Speed <= 10 且非全線壅塞之線圈讀數異常)
+          if (item.isMain && item.val.speed > 10 && delta < minDeltaMainline) {
             minDeltaMainline = delta;
             bestMainline = item.val;
           }
@@ -5814,7 +5817,7 @@
         if (dataMap) {
           for (const [vdId, val] of Object.entries(dataMap)) {
             if (isMainlineVD(vdId) && vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
-              if (typeof val.speed === 'number' && val.speed > 0) {
+              if (typeof val.speed === 'number' && val.speed > 10) {
                 return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
               }
             }
@@ -5910,8 +5913,6 @@
         });
       }
 
-
-
       return {
         roadId: road.id,
         direction: direction,
@@ -5926,8 +5927,20 @@
       return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }
 
-    function getSpeedColor(speed) {
+    function getSpeedColor(speed, roadType = 'freeway') {
       if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return 'var(--speed-gray)';
+      if (roadType === 'express') {
+        if (speed >= 65) return 'var(--speed-green)';
+        if (speed >= 50) return 'var(--speed-yellow)';
+        if (speed >= 35) return 'var(--speed-orange)';
+        if (speed >= 20) return 'var(--speed-red)';
+        return 'var(--speed-purple)';
+      } else if (roadType === 'provincial') {
+        if (speed >= 50) return 'var(--speed-green)';
+        if (speed >= 35) return 'var(--speed-yellow)';
+        if (speed >= 20) return 'var(--speed-orange)';
+        return 'var(--speed-red)';
+      }
       if (speed >= 80) return 'var(--speed-green)';
       if (speed >= 60) return 'var(--speed-yellow)';
       if (speed >= 40) return 'var(--speed-orange)';
@@ -6306,8 +6319,21 @@
       });
     }
 
-    function getSpeedHex(speed) {
+    function getSpeedHex(speed, roadType = 'freeway') {
       if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return '#64748b';
+      if (roadType === 'express') {
+        if (speed >= 65) return '#10b981'; // 快速公路 (速限 80-90): 65+ km/h 全線順暢綠
+        if (speed >= 50) return '#f59e0b'; // 50-64 km/h 車多黃
+        if (speed >= 35) return '#f97316'; // 35-49 km/h 壅塞橘
+        if (speed >= 20) return '#ef4444'; // 20-34 km/h 紅
+        return '#8b5cf6';                  // <20 km/h 紫
+      } else if (roadType === 'provincial') {
+        if (speed >= 50) return '#10b981'; // 主要省道 (速限 50-60): 50+ km/h 順暢綠
+        if (speed >= 35) return '#f59e0b'; // 35-49 km/h 黃
+        if (speed >= 20) return '#f97316'; // 20-34 km/h 橘
+        return '#ef4444';
+      }
+      // 國道標準 (高公局 1968 規範)
       if (speed >= 80) return '#10b981';
       if (speed >= 60) return '#f59e0b';
       if (speed >= 40) return '#f97316';
@@ -6379,8 +6405,8 @@
 
       const dir1Label = road.directions[0].name;
       const dir2Label = road.directions[1] ? road.directions[1].name : '逆向';
-      const colorFwd = getSpeedHex(finalSpeedFwd);
-      const colorRev = getSpeedHex(finalSpeedRev);
+      const colorFwd = getSpeedHex(finalSpeedFwd, road.type);
+      const colorRev = getSpeedHex(finalSpeedRev, road.type);
 
       const secText = st2 ? `${st1.name} ↔ ${st2.name}` : `${st1.name} (${st1.k.toFixed(1)}k)`;
 
@@ -6449,8 +6475,8 @@
           const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
           const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i] ? stationsRev[i].avgSpeed : speedFwd);
 
-          const colorFwd = getSpeedHex(speedFwd);
-          const colorRev = getSpeedHex(speedRev);
+          const colorFwd = getSpeedHex(speedFwd, road.type);
+          const colorRev = getSpeedHex(speedRev, road.type);
 
           // 順向折線 (南下 / 東向 - 靠右側/外軌)
           if (showFwd && trackFwd[i] && trackFwd[i+1]) {
@@ -6521,7 +6547,7 @@
 
           const circle = L.circleMarker([st.lat, st.lng], {
             radius: 3.5,
-            fillColor: getSpeedHex(nodeSpeed),
+            fillColor: getSpeedHex(nodeSpeed, road.type),
             color: '#0b0f19',
             weight: 1.5,
             fillOpacity: 1
@@ -6785,7 +6811,7 @@
               <div class="gps-nav-node active">
                 <div class="gps-nav-label" style="color: #60a5fa; font-weight: 700;">📍 目前交流道</div>
                 <div class="gps-nav-name" style="color: #60a5fa;">${renderStationNameHTML(currentStation.station.name, false)}</div>
-                <div class="gps-nav-speed" style="color: ${getSpeedColor(currentStation.avgSpeed)}">
+                <div class="gps-nav-speed" style="color: ${getSpeedColor(currentStation.avgSpeed, road.type)}">
                   ${currentStation.avgSpeed > 0 ? `${currentStation.avgSpeed} km/h` : '--'}
                 </div>
               </div>
@@ -6794,7 +6820,7 @@
               <div class="gps-nav-node">
                 <div class="gps-nav-label">➡️ 下一出口 (即將抵達)</div>
                 <div class="gps-nav-name">${nextStation ? renderStationNameHTML(nextStation.station.name, false) : '路線終點'}</div>
-                <div class="gps-nav-speed" style="color: ${nextStation ? getSpeedColor(nextStation.avgSpeed) : 'var(--text-dim)'}">
+                <div class="gps-nav-speed" style="color: ${nextStation ? getSpeedColor(nextStation.avgSpeed, road.type) : 'var(--text-dim)'}">
                   ${nextStation ? (nextStation.avgSpeed > 0 ? `${nextStation.avgSpeed} km/h` : '--') : '--'}
                 </div>
               </div>
@@ -6820,8 +6846,8 @@
           const avgL2 = l2Speeds.length > 0 ? Math.round(l2Speeds.reduce((a,b)=>a+b,0)/l2Speeds.length) : -1;
           const l1Time = avgL1 > 0 ? (12.9 / avgL1 * 60).toFixed(1) : '--';
           const l2Time = avgL2 > 0 ? (12.9 / avgL2 * 60).toFixed(1) : '--';
-          const l1Color = getSpeedColor(avgL1);
-          const l2Color = getSpeedColor(avgL2);
+          const l1Color = getSpeedColor(avgL1, road.type);
+          const l2Color = getSpeedColor(avgL2, road.type);
 
           let recText = '';
           let recClass = '';
@@ -6887,7 +6913,7 @@
       html += `<div class="strip-list">`;
 
       displayStations.forEach(item => {
-        const speedColor = getSpeedColor(item.avgSpeed);
+        const speedColor = getSpeedColor(item.avgSpeed, road.type);
         const isTunnelSpecial = Boolean(item.station.isTunnel);
         const isCurrentGps = nearestStationInfo && item.station.name === nearestStationInfo.station.name;
 
@@ -6895,8 +6921,8 @@
         if (isTunnelSpecial) {
           const lane1 = item.lanes[0] || { speed: -1 };
           const lane2 = item.lanes[1] || { speed: -1 };
-          const l1Color = getSpeedColor(lane1.speed);
-          const l2Color = getSpeedColor(lane2.speed);
+          const l1Color = getSpeedColor(lane1.speed, road.type);
+          const l2Color = getSpeedColor(lane2.speed, road.type);
 
           html += `
             <div class="tunnel-dual-strip ${isCurrentGps ? 'is-current-gps-station' : ''}" ${isCurrentGps ? 'id="currentGpsStationRow"' : ''}>

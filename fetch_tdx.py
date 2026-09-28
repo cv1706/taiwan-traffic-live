@@ -65,6 +65,9 @@ def parse_vd_lives(data):
         speeds = []
         for flow in item.get("LinkFlows", []):
             for lane in flow.get("Lanes", []):
+                err = lane.get("ErrorType", "diag0")
+                if err and err != "diag0":
+                    continue
                 spd = lane.get("Speed")
                 occ = lane.get("Occupancy", 0) or 0
                 # TDX / 交通偵測器標準：
