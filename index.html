@@ -6401,22 +6401,8 @@
     function buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev) {
       const defaultSpeed = (road.type === 'freeway') ? 95 : (road.type === 'express' ? 80 : 60);
 
-      let finalSpeedFwd = speedFwd;
-      let finalSpeedRev = speedRev;
-
-      if (finalSpeedFwd === null || finalSpeedFwd === undefined || isNaN(finalSpeedFwd) || finalSpeedFwd <= 0) {
-        const segFwd = findTDXSectionData(road, st1, dir1, st2);
-        finalSpeedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) 
-          ? Math.round(segFwd.TravelSpeed) 
-          : defaultSpeed;
-      }
-
-      if (finalSpeedRev === null || finalSpeedRev === undefined || isNaN(finalSpeedRev) || finalSpeedRev <= 0) {
-        const segRev = findTDXSectionData(road, st2 || st1, dir2, st1);
-        finalSpeedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) 
-          ? Math.round(segRev.TravelSpeed) 
-          : (finalSpeedFwd || defaultSpeed);
-      }
+      const finalSpeedFwd = (speedFwd !== undefined && speedFwd !== null && !isNaN(speedFwd) && speedFwd > 0) ? speedFwd : defaultSpeed;
+      const finalSpeedRev = (speedRev !== undefined && speedRev !== null && !isNaN(speedRev) && speedRev > 0) ? speedRev : (finalSpeedFwd || defaultSpeed);
 
       const dir1Label = road.directions[0].name;
       const dir2Label = road.directions[1] ? road.directions[1].name : '逆向';
@@ -6483,12 +6469,9 @@
           const st1 = stationsFwd[i].station;
           const st2 = stationsFwd[i+1].station;
 
-          // 優先採樣區間中點主線 VD 數據，完美與高公局 1968 區間路網標示對齊
-          const segFwd = findTDXSectionData(road, st1, dir1, st2);
-          const segRev = findTDXSectionData(road, st1, dir2, st2);
-
-          const speedFwd = (segFwd && typeof segFwd.TravelSpeed === 'number' && segFwd.TravelSpeed > 0) ? Math.round(segFwd.TravelSpeed) : stationsFwd[i].avgSpeed;
-          const speedRev = (segRev && typeof segRev.TravelSpeed === 'number' && segRev.TravelSpeed > 0) ? Math.round(segRev.TravelSpeed) : (stationsRev[i+1] ? stationsRev[i+1].avgSpeed : speedFwd);
+          // 核心架構保證：直接採用 generateTrafficData 之運算產物，維持全系統單一真實資料來源 (Single Source of Truth)
+          const speedFwd = stationsFwd[i].avgSpeed;
+          const speedRev = stationsRev[i+1] ? stationsRev[i+1].avgSpeed : stationsFwd[i].avgSpeed;
 
           const colorFwd = getSpeedHex(speedFwd, road.type);
           const colorRev = getSpeedHex(speedRev, road.type);
