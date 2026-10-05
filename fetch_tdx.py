@@ -12,14 +12,17 @@ import sys
 import time
 import requests
 
-TDX_CLIENT_ID = os.environ.get("TDX_CLIENT_ID", "cv1706yang-8ba9e89a-7819-43c6")
-TDX_CLIENT_SECRET = os.environ.get("TDX_CLIENT_SECRET", "4ba7c5d3-e9aa-4687-981a-51f5361e8e81")
+TDX_CLIENT_ID = os.environ.get("TDX_CLIENT_ID", "")
+TDX_CLIENT_SECRET = os.environ.get("TDX_CLIENT_SECRET", "")
 
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
 VD_FREEWAY_URL = "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Freeway?$format=JSON"
 VD_HIGHWAY_URL = "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Highway?$format=JSON"
 
 def get_token():
+    if not TDX_CLIENT_ID or not TDX_CLIENT_SECRET:
+        print("[!] 缺少 TDX_CLIENT_ID / TDX_CLIENT_SECRET 環境變數，中止抓取")
+        return None
     payload = {
         "grant_type": "client_credentials",
         "client_id": TDX_CLIENT_ID,

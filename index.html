@@ -5479,11 +5479,28 @@
     /**
      * 從 TDX 官方 API 直接抓取即時資料 (客戶端直連備援)
      */
+    function getTdxClientConfig() {
+      try {
+        const raw = localStorage.getItem('tdxClientConfig');
+        if (!raw) return null;
+        const cfg = JSON.parse(raw);
+        if (cfg && cfg.client_id && cfg.client_secret) return cfg;
+      } catch (e) {
+        return null;
+      }
+      return null;
+    }
+
     async function fetchTDXDirectly() {
+      const tdxConfig = getTdxClientConfig();
+      if (!tdxConfig) {
+        console.warn('未設定 TDX 直連憑證（localStorage.tdxClientConfig），略過客戶端直連備援');
+        return null;
+      }
       const tokenRes = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "grant_type=client_credentials&client_id=cv1706yang-8ba9e89a-7819-43c6&client_secret=4ba7c5d3-e9aa-4687-981a-51f5361e8e81"
+        body: `grant_type=client_credentials&client_id=${encodeURIComponent(tdxConfig.client_id)}&client_secret=${encodeURIComponent(tdxConfig.client_secret)}`
       });
       if (!tokenRes.ok) return null;
       const tokenData = await tokenRes.json();
@@ -5963,6 +5980,15 @@
       return 'var(--speed-purple)';
     }
 
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     /**
      * 解析交流道/系統交流道名稱並自動掛載交會道路之快速跳轉標籤 (JCT Quick Link)
      * @param {string} rawName 測站原始名稱 (例: "大華系統 (接台62)", "五股交流道 (接台64/65)", "霧峰系統 (接國6/台74)")
@@ -6015,7 +6041,7 @@
       }
 
       const gpsPill = isCurrentGps ? '<span class="gps-current-pill">📍 目前位置</span>' : '';
-      return `${baseName}${jctBadgesHTML}${gpsPill}`;
+      return `${escapeHtml(baseName)}${jctBadgesHTML}${gpsPill}`;
     }
 
     /* ==========================================================================
@@ -6670,7 +6696,7 @@
               type="text" 
               class="search-input" 
               placeholder="搜尋編號或地名 (例: 國1, 國3, 台61, 頭份, 竹南)..."
-              value="${AppState.searchQuery}"
+              value="${escapeHtml(AppState.searchQuery)}"
               oninput="handleSearchInput(this.value)"
             />
           </div>
@@ -6830,7 +6856,7 @@
       // 事件警示 (隨頁面滾動)
       if (traffic.incidents && traffic.incidents.length > 0) {
         traffic.incidents.forEach(inc => {
-          html += `<div class="incident-strip ${inc.type === 'warn' ? 'warn' : ''}">⚠️ ${inc.text}</div>`;
+          html += `<div class="incident-strip ${inc.type === 'warn' ? 'warn' : ''}">⚠️ ${escapeHtml(inc.text)}</div>`;
         });
       }
 
@@ -7232,7 +7258,7 @@
         AppState.countdownSeconds--;
         if (AppState.countdownSeconds <= 0) {
           AppState.countdownSeconds = 60;
-          await fetchLiveTrafficData(true);
+          await fetchLiveTrafficData(false);
           if (AppState.currentView === 'map') {
             drawRoadNetworkOnMap();
           } else if (AppState.currentView === 'index') {
