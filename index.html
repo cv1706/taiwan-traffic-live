@@ -5479,42 +5479,19 @@
     /**
      * 從 TDX 官方 API 直接抓取即時資料 (客戶端直連備援)
      */
-    function getTdxClientConfig() {
-      try {
-        const raw = localStorage.getItem('tdxClientConfig');
-        if (!raw) return null;
-        const cfg = JSON.parse(raw);
-        if (cfg && cfg.client_id && cfg.client_secret) return cfg;
-      } catch (e) {
-        return null;
-      }
-      return null;
-    }
-
     async function fetchTDXDirectly() {
-      const tdxConfig = getTdxClientConfig();
-      if (!tdxConfig) {
-        console.warn('未設定 TDX 直連憑證（localStorage.tdxClientConfig），略過客戶端直連備援');
+      let payload;
+      try {
+        const res = await fetch('/api/tdx-traffic', { cache: 'no-store' });
+        if (!res.ok) return null;
+        payload = await res.json();
+      } catch (err) {
+        console.warn('TDX 代理查詢失敗:', err);
         return null;
       }
-      const tokenRes = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `grant_type=client_credentials&client_id=${encodeURIComponent(tdxConfig.client_id)}&client_secret=${encodeURIComponent(tdxConfig.client_secret)}`
-      });
-      if (!tokenRes.ok) return null;
-      const tokenData = await tokenRes.json();
-      const token = tokenData.access_token;
-      if (!token) return null;
-
-      const authHeaders = { "Authorization": `Bearer ${token}`, "Accept": "application/json" };
-      const [fwRes, hwRes] = await Promise.all([
-        fetch("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Freeway?$format=JSON", { headers: authHeaders }),
-        fetch("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/VD/Highway?$format=JSON", { headers: authHeaders })
-      ]);
-
-      const fwJson = fwRes.ok ? await fwRes.json() : null;
-      const hwJson = hwRes.ok ? await hwRes.json() : null;
+      if (!payload || (!payload.freeway && !payload.highway)) return null;
+      const fwJson = payload.freeway;
+      const hwJson = payload.highway;
 
       const parseVD = (data) => {
         const map = {};
