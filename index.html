@@ -40,6 +40,7 @@
       --speed-red: #ef4444;     /* 20-39 km/h 嚴重壅塞 */
       --speed-purple: #8b5cf6;  /* 0-19 km/h 紫爆走走停停 */
       --speed-gray: #475569;    /* 故障/無資料 */
+      --speed-overlimit: #22d3ee; /* 實測車速超過法定速限（超速車流） */
 
       --radius-sm: 4px;
       --radius-md: 8px;
@@ -358,6 +359,7 @@
       --speed-red: #ef4444;     /* 20-39 km/h 嚴重壅塞 */
       --speed-purple: #8b5cf6;  /* 0-19 km/h 紫爆走走停停 */
       --speed-gray: #475569;    /* 故障/無資料 */
+      --speed-overlimit: #22d3ee; /* 實測車速超過法定速限（超速車流） */
 
       --radius-sm: 4px;
       --radius-md: 8px;
@@ -5932,9 +5934,30 @@
      * 路段法定速限查詢（僅國5 內建速限表；其餘道路回傳 null 沿用絕對值色階）
      * 國5 速限（交通部公告 106.1.25 起）：南港系統~坪林 0-15K = 80 km/h；坪林~蘇澳 15K~54K（含雪隧）= 90 km/h
      */
+    // 來源：交通部高速公路局「國道各主要路段速限」(freeway.gov.tw 行車速限資訊，106.1.25 起適用)
+    // 里程 k 為國道官方里程樁（由北往南遞增），與 VD/站點 k 一致
     function getRoadSpeedLimit(road, k) {
-      if (!road || road.id !== 'freeway-5' || typeof k !== 'number' || isNaN(k)) return null;
-      return k < 15 ? 80 : 90;
+      if (!road || typeof k !== 'number' || isNaN(k)) return null;
+      switch (road.id) {
+        case 'freeway-1':
+          if (k < 154.45) return 100;   // 大安溪橋 154K+450 以北
+          if (k < 356) return 110;      // 大安溪橋 ~ 楠梓交流道
+          if (k < 370) return 100;      // 楠梓 ~ 五甲系統
+          if (k < 373) return 80;       // 五甲系統 ~ 漁港路
+          return 60;                    // 漁港路以南（末端遞減）
+        case 'freeway-2': return k < 1 ? 80 : 100;   // 大園交流道 1K 為界
+        case 'freeway-3':
+          if (k < 35) return 90;        // 中和交流道以北
+          if (k < 43) return 100;       // 中和 ~ 土城
+          return 110;                   // 土城交流道以南
+        case 'freeway-3a': return 80;   // 全線
+        case 'freeway-4': return 100;   // 全線
+        case 'freeway-5': return k < 15 ? 80 : 90;   // 坪林 15K 為界
+        case 'freeway-6': return 100;   // 全線
+        case 'freeway-8': return k < 4 ? 80 : 100;   // 南133區道 4K 為界
+        case 'freeway-10': return k < 6 ? 80 : 100;  // 仁武交流道 6K 為界
+        default: return null;           // 高架支線等未列表路線：維持絕對門檻判色
+      }
     }
 
     function getSpeedColor(speed, roadType = 'freeway', speedLimit = null) {
@@ -5942,6 +5965,8 @@
       // 有法定速限時改採「速限比例」判色（國5）：80%+ 綠、60%+ 黃、40%+ 橘、25%+ 紅、以下紫
       if (speedLimit && speedLimit > 0) {
         const ratio = speed / speedLimit;
+        // 實測車速超過法定速限：亮色系「超速」專屬色（資料為 VD 真實測得值，非偽造）
+        if (ratio > 1.0) return 'var(--speed-overlimit)';
         if (ratio >= 0.80) return 'var(--speed-green)';
         if (ratio >= 0.60) return 'var(--speed-yellow)';
         if (ratio >= 0.40) return 'var(--speed-orange)';
@@ -6982,6 +7007,7 @@
               <div class="strip-right">
                 ${item.avgSpeed <= 0 ? '<span class="strip-badge-missing">離線</span>' : ''}
                 ${stationSpeedLimit ? `<span class="strip-badge-missing" style="background:rgba(96,165,250,0.15); color:#60a5fa;">限${stationSpeedLimit}</span>` : ''}
+                ${stationSpeedLimit && item.avgSpeed > stationSpeedLimit ? `<span class="strip-badge-missing" style="background:rgba(34,211,238,0.15); color:#22d3ee;">超速</span>` : ''}
 
                 <span class="strip-avg-speed" style="color: ${speedColor}">
                   ${item.avgSpeed > 0 ? item.avgSpeed : '--'}
