@@ -5473,23 +5473,54 @@
       highwayMap: {},
       incidents: [],
       lastFetchTime: 0,
+      dataTimestamp: 0,
       updateTimeStr: '',
+      source: 'none', // 'proxy' | 'json' | 'none'
       isFetching: false,
-      status: 'init' // 'live' | 'fallback' | 'init'
+      status: 'init' // 'live' | 'stale' | 'fallback' | 'init'
     };
 
+    function formatTaiwanTime(tsSec, includeDate = false) {
+      if (!tsSec || tsSec <= 0) return '';
+      const opts = {
+        timeZone: 'Asia/Taipei',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      };
+      if (includeDate) {
+        opts.month = '2-digit';
+        opts.day = '2-digit';
+      } else {
+        opts.second = '2-digit';
+      }
+      return new Intl.DateTimeFormat('zh-TW', opts).format(new Date(tsSec * 1000));
+    }
+
     /**
-     * 從 TDX 官方 API 直接抓取即時資料 (客戶端直連備援)
+     * 從 TDX 官方 API 代理抓取即時資料
      */
     async function fetchTDXDirectly() {
-      let payload;
-      try {
-        const res = await fetch('/api/tdx-traffic', { cache: 'no-store' });
-        if (!res.ok) return null;
-        payload = await res.json();
-      } catch (err) {
-        console.warn('TDX 代理查詢失敗:', err);
-        return null;
+      const endpoints = ['/api/tdx-traffic'];
+      if (typeof location !== 'undefined' &&
+          location.protocol.startsWith('http') &&
+          location.hostname !== 'web-apps-hub.cv1706yang.workers.dev' &&
+          location.hostname !== 'localhost' &&
+          location.hostname !== '127.0.0.1') {
+        endpoints.push('https://web-apps-hub.cv1706yang.workers.dev/api/tdx-traffic');
+      }
+
+      let payload = null;
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, { cache: 'no-store' });
+          if (res.ok) {
+            payload = await res.json();
+            if (payload && (payload.freeway || payload.highway)) break;
+          }
+        } catch (err) {
+          console.warn(`TDX 代理查詢失敗 (${endpoint}):`, err);
+        }
       }
       if (!payload || (!payload.freeway && !payload.highway)) return null;
       const fwJson = payload.freeway;
@@ -5498,33 +5529,48 @@
       const parseVD = (data) => {
         const map = {};
         if (!data || !data.VDLives) return map;
-        const timeStr = data.UpdateTime || new Date().toISOString();
+        const defaultTimeStr = data.UpdateTime || new Date().toISOString();
         for (const item of data.VDLives) {
           const vdid = item.VDID;
           if (!vdid) continue;
-          const speeds = [];
+          if (item.Status !== undefined && item.Status !== null && item.Status !== 0) continue;
+
+          const timeStr = item.DataCollectTime || defaultTimeStr;
+          const laneSpeeds = [];
+          const validSpeeds = [];
           for (const flow of (item.LinkFlows || [])) {
             for (const lane of (flow.Lanes || [])) {
               const err = lane.ErrorType || 'diag0';
-              if (err && err !== 'diag0') continue;
+              if (err && err !== 'diag0') {
+                laneSpeeds.push(null);
+                continue;
+              }
               const spd = lane.Speed;
               const occ = lane.Occupancy || 0;
               // TDX / 交通偵測器標準：
               // 1. 有效行駛車速：0 < spd <= 160
               // 2. 當 spd == 0 時，僅在 Occupancy > 15% 時才代表車輛卡在線圈上的真實嚴重紫爆定點
               // 3. 若 spd == 0 且 Occupancy == 0 (或為空)，代表該車道無車流通行 / 閒置車道 / 無採樣，嚴禁計入平均車速
+              // 4. 以 null 保留原始車道索引位置，避免內側車道無資料時由外側車道遞補錯位
               if (spd !== undefined && spd !== null && typeof spd === 'number') {
                 if (spd > 0 && spd <= 160) {
-                  speeds.push(Math.round(spd));
+                  const v = Math.round(spd);
+                  laneSpeeds.push(v);
+                  validSpeeds.push(v);
                 } else if (spd === 0 && occ > 15) {
-                  speeds.push(0);
+                  laneSpeeds.push(0);
+                  validSpeeds.push(0);
+                } else {
+                  laneSpeeds.push(null);
                 }
+              } else {
+                laneSpeeds.push(null);
               }
             }
           }
-          if (speeds.length > 0) {
-            const avg = Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length);
-            map[vdid] = { speed: avg, lanes: speeds, time: timeStr };
+          if (validSpeeds.length > 0) {
+            const avg = Math.round(validSpeeds.reduce((a, b) => a + b, 0) / validSpeeds.length);
+            map[vdid] = { speed: avg, lanes: laneSpeeds, time: timeStr };
           }
         }
         return map;
@@ -5532,23 +5578,22 @@
 
       const fwMap = parseVD(fwJson);
       const hwMap = parseVD(hwJson);
-
-      const d = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const nowStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      const fetchedTs = Number(payload.fetchedTimestamp) || Math.floor(Date.now() / 1000);
 
       return {
         freewayMap: fwMap,
         highwayMap: hwMap,
-        updateTime: nowStr
+        updateTimestamp: fetchedTs,
+        updateTime: formatTaiwanTime(fetchedTs, false)
       };
     }
 
     /**
-     * 下載全台即時路況快取中繼數據 (支援 GitHub Pages 同步、TDX 直連與平滑備援)
+     * 下載全台即時路況數據（優先 Worker 即時代理，失敗才平滑降級至靜態快照）
      */
     async function fetchLiveTrafficData(force = false) {
       const now = Date.now();
+      const nowSec = Math.floor(now / 1000);
       if (!force && (now - TrafficDataStore.lastFetchTime < 30000) && (Object.keys(TrafficDataStore.freewayMap).length > 0)) {
         return;
       }
@@ -5556,56 +5601,61 @@
       TrafficDataStore.isFetching = true;
 
       try {
-        let isJsonFresh = false;
-        try {
-          const res = await fetch(`./traffic_live.json?t=${now}`, {
-            cache: 'no-store'
-          });
+        let gotProxy = false;
 
-          if (res.ok) {
-            const data = await res.json();
-            if (data && (data.freewayCount > 0 || data.highwayCount > 0 || data.status === 'success')) {
-              TrafficDataStore.freewayMap = data.freewayMap || {};
-              TrafficDataStore.highwayMap = data.highwayMap || {};
-              TrafficDataStore.incidents = data.incidents || [];
-              TrafficDataStore.updateTimeStr = data.updateTime || '';
-              TrafficDataStore.lastFetchTime = now;
-              TrafficDataStore.status = 'live';
-              TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
+        // 1. 線上模式優先直連 TDX 代理，取得真正 60 秒級即時路況
+        if (navigator.onLine) {
+          const directData = await fetchTDXDirectly();
+          if (directData && Object.keys(directData.freewayMap).length > 0) {
+            TrafficDataStore.freewayMap = directData.freewayMap;
+            TrafficDataStore.highwayMap = directData.highwayMap;
+            TrafficDataStore.dataTimestamp = directData.updateTimestamp;
+            TrafficDataStore.updateTimeStr = directData.updateTime;
+            TrafficDataStore.lastFetchTime = now;
+            TrafficDataStore.source = 'proxy';
+            TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
+            gotProxy = true;
+          }
+        }
 
-              // 檢查 json 是否在 15 分鐘以內
-              if (data.updateTimestamp && (now / 1000 - data.updateTimestamp < 900)) {
-                isJsonFresh = true;
+        // 2. 代理失敗時，改讀靜態 traffic_live.json（絕不以較舊檔案覆蓋較新記憶體資料）
+        if (!gotProxy) {
+          try {
+            const res = await fetch(`./traffic_live.json?t=${now}`, { cache: 'no-store' });
+            if (res.ok) {
+              const data = await res.json();
+              if (data && (data.freewayCount > 0 || data.highwayCount > 0 || data.status === 'success')) {
+                const jsonTs = Number(data.updateTimestamp) || 0;
+                const hasExisting = Object.keys(TrafficDataStore.freewayMap).length > 0;
+                if (!hasExisting || jsonTs > TrafficDataStore.dataTimestamp) {
+                  TrafficDataStore.freewayMap = data.freewayMap || {};
+                  TrafficDataStore.highwayMap = data.highwayMap || {};
+                  TrafficDataStore.incidents = data.incidents || [];
+                  TrafficDataStore.dataTimestamp = jsonTs;
+                  TrafficDataStore.updateTimeStr = data.updateTime || '';
+                  TrafficDataStore.lastFetchTime = now;
+                  TrafficDataStore.source = 'json';
+                  TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
+                }
               }
             }
-          }
-        } catch (jsonErr) {
-          console.warn("Fetch json fallback:", jsonErr);
-        }
-
-        // 若 json 不夠新或手動強制更新，嘗試 TDX 官方 API 直連
-        if ((!isJsonFresh || force) && navigator.onLine) {
-          try {
-            const directData = await fetchTDXDirectly();
-            if (directData && Object.keys(directData.freewayMap).length > 0) {
-              TrafficDataStore.freewayMap = directData.freewayMap;
-              TrafficDataStore.highwayMap = directData.highwayMap;
-              TrafficDataStore.updateTimeStr = directData.updateTime;
-              TrafficDataStore.lastFetchTime = now;
-              TrafficDataStore.status = 'live';
-              TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
-            }
-          } catch (tdxErr) {
-            console.warn("TDX direct fetch fallback:", tdxErr);
+          } catch (jsonErr) {
+            console.warn('Fetch json fallback:', jsonErr);
           }
         }
 
-        if (Object.keys(TrafficDataStore.freewayMap).length === 0) {
+        const hasData = Object.keys(TrafficDataStore.freewayMap).length > 0;
+        if (!hasData) {
           TrafficDataStore.status = 'fallback';
           TrafficDataStore.vdIndex = buildVDIndex(TrafficDataStore.freewayMap, TrafficDataStore.highwayMap);
+        } else {
+          const ageSec = TrafficDataStore.dataTimestamp > 0 ? (nowSec - TrafficDataStore.dataTimestamp) : 999999;
+          TrafficDataStore.status = (ageSec <= 900) ? 'live' : 'stale';
         }
       } catch (err) {
-        TrafficDataStore.status = (Object.keys(TrafficDataStore.freewayMap).length > 0) ? 'live' : 'fallback';
+        const hasData = Object.keys(TrafficDataStore.freewayMap).length > 0;
+        const ageSec = TrafficDataStore.dataTimestamp > 0 ? (nowSec - TrafficDataStore.dataTimestamp) : 999999;
+        TrafficDataStore.status = hasData ? ((ageSec <= 900) ? 'live' : 'stale') : 'fallback';
       } finally {
         TrafficDataStore.isFetching = false;
         updateTDXStatusUI();
@@ -5617,19 +5667,31 @@
       const text = document.getElementById('tdxStatusText');
       if (!badge || !text) return;
 
-      if (TrafficDataStore.status === 'live' && Object.keys(TrafficDataStore.freewayMap).length > 0) {
-        let timeDisplay = '';
-        if (TrafficDataStore.updateTimeStr) {
-          const match = TrafficDataStore.updateTimeStr.match(/(\d{2}:\d{2})/);
-          if (match) timeDisplay = match[1];
-        }
+      const dot = badge.querySelector('.timer-dot');
+      const hasData = Object.keys(TrafficDataStore.freewayMap).length > 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const ageSec = TrafficDataStore.dataTimestamp > 0 ? Math.max(0, nowSec - TrafficDataStore.dataTimestamp) : null;
+      const timeDisplay = TrafficDataStore.dataTimestamp > 0
+        ? formatTaiwanTime(TrafficDataStore.dataTimestamp, ageSec !== null && ageSec >= 43200).slice(0, ageSec >= 43200 ? 11 : 5)
+        : '';
+
+      if (TrafficDataStore.status === 'live' && hasData) {
         badge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
         badge.style.color = '#34d399';
+        if (dot) dot.style.background = '#10b981';
         text.textContent = timeDisplay ? `即時 (${timeDisplay})` : 'TDX 即時';
+      } else if (TrafficDataStore.status === 'stale' && hasData) {
+        const ageMin = ageSec !== null ? Math.floor(ageSec / 60) : 0;
+        const lagLabel = ageMin >= 120 ? `過期 ${Math.floor(ageMin / 60)}h` : `延遲 ${ageMin}分`;
+        badge.style.borderColor = 'rgba(249, 115, 22, 0.5)';
+        badge.style.color = '#fb923c';
+        if (dot) dot.style.background = '#f97316';
+        text.textContent = timeDisplay ? `${lagLabel} (${timeDisplay})` : lagLabel;
       } else {
         badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
         badge.style.color = '#fbbf24';
-        text.textContent = '離線備援';
+        if (dot) dot.style.background = '#f59e0b';
+        text.textContent = '離線無資料';
       }
     }
 
@@ -5665,25 +5727,23 @@
      */
     function buildVDIndex(freewayMap, highwayMap) {
       const idx = {};
+      const EXPRESS_NUMS = new Set([61, 62, 64, 65, 66, 68, 72, 74, 76, 78, 82, 84, 86, 88]);
 
       // 1. 處理國道高速公路 VD
       if (freewayMap) {
         for (const [vdId, val] of Object.entries(freewayMap)) {
           const parts = vdId.split('-');
+          const roadToken = (parts[1] || '').toUpperCase();
           let roadKey = '';
           let dir = '';
           let vdK = null;
 
-          const isElevated = vdId.includes('1H') || vdId.includes('-N1H-');
-          const is3A = vdId.includes('3A') || vdId.includes('3甲') || vdId.includes('T3A') || vdId.includes('N3A');
-
-          if (is3A) {
-            roadKey = 'freeway-3a';
-          } else if (isElevated) {
+          if (roadToken === 'N1H') {
             roadKey = 'freeway-1-elevated';
-          } else if (parts.length >= 2 && /^N\d+$/i.test(parts[1])) {
-            const num = parts[1].replace(/N/i, '');
-            roadKey = `freeway-${num}`;
+          } else if (roadToken === 'N3A') {
+            roadKey = 'freeway-3a';
+          } else if (/^N\d+$/.test(roadToken)) {
+            roadKey = `freeway-${roadToken.slice(1)}`;
           }
 
           if (parts.length >= 4) {
@@ -5727,21 +5787,16 @@
             const kVal = parseFloat(parts[3]);
             if (!isNaN(kVal)) vdK = kVal;
           }
-          // 格式 2: VD-28-0740-004-001 或 VD-12-0610-008-003 (公路局標準編碼)
-          else if (parts.length >= 4 && /^\d{3,4}[A-Za-z]?$/.test(parts[2])) {
-            const routeRaw = parts[2];
-            const numMatch = routeRaw.match(/^0*(\d+)/);
-            if (numMatch) {
-              const rawNum = parseInt(numMatch[1], 10);
-              const routeNum = (rawNum >= 100 && rawNum % 10 === 0) ? rawNum / 10 : rawNum;
-              if ([61, 62, 64, 65, 66, 68, 72, 74, 76, 78, 82, 84, 86, 88].includes(routeNum)) {
-                roadKey = `express-${routeNum}`;
-              } else if (routeNum === 9) {
-                roadKey = 'provincial-9-suhua';
-              } else if (routeNum === 14) {
-                roadKey = 'provincial-14a';
+          // 格式 2: VD-28-0740-004-001 或 VD-11-0020-002-002 (公路局標準 4 碼路線編碼：前 3 碼為路線號，第 4 碼 '0' 表主線、'A'/'B'... 表支線)
+          else if (parts.length >= 4 && /^\d{3}[0A-Za-z]$/.test(parts[2])) {
+            const routeMatch = parts[2].match(/^(\d{3})([0A-Za-z])$/);
+            if (routeMatch) {
+              const routeNum = parseInt(routeMatch[1], 10);
+              const branch = routeMatch[2].toUpperCase();
+              if (branch === '0') {
+                roadKey = EXPRESS_NUMS.has(routeNum) ? `express-${routeNum}` : `provincial-${routeNum}`;
               } else {
-                roadKey = `provincial-${routeNum}`;
+                roadKey = `provincial-${routeNum}${branch.toLowerCase()}`;
               }
             }
 
@@ -5782,21 +5837,29 @@
       }
 
       const roadKey = road.id;
-      const dirList = (TrafficDataStore.vdIndex && TrafficDataStore.vdIndex[roadKey] && TrafficDataStore.vdIndex[roadKey][direction]) || null;
+      const roadBucket = TrafficDataStore.vdIndex && TrafficDataStore.vdIndex[roadKey];
+      let dirList = (roadBucket && roadBucket[direction]) || null;
+      // 針對僅建置單組雙向偵測器 (-001) 的山區省道（如台7、台7甲、台14甲），若該向無獨立測點則回退讀取同路段共站測點
+      if ((!dirList || dirList.length === 0) && road.type === 'provincial' && roadBucket) {
+        const altDir = Object.keys(roadBucket).find(k => roadBucket[k] && roadBucket[k].length > 0);
+        if (altDir) dirList = roadBucket[altDir];
+      }
+
       const targetK = (toStation && typeof toStation.k === 'number') ? (fromStation.k + toStation.k) / 2 : fromStation.k;
 
       if (dirList && dirList.length > 0) {
         let bestMainline = null;
-        let minDeltaMainline = 15.0;
+        let minDeltaMainline = road.type === 'provincial' ? 25.0 : 15.0;
 
         for (let i = 0; i < dirList.length; i++) {
           const item = dirList[i];
           const delta = Math.abs(item.vdK - targetK);
           const spd = item.val.speed;
-          const laneCount = (item.val.lanes || []).length;
+          const validLanes = (item.val.lanes || []).filter(v => v !== null && v !== undefined && v >= 0);
+          const laneCount = validLanes.length;
 
-          // 排除單一故障測點 (如 Speed <= 10 且非全線壅塞之線圈讀數異常)
-          if (item.isMain && spd > 10 && delta < minDeltaMainline) {
+          // 已於上游透過 Occupancy > 15% 過濾閒置 0 km/h，故 0..10 km/h 屬真實紫爆壅塞，不得濾除
+          if (item.isMain && typeof spd === 'number' && spd >= 0 && delta < minDeltaMainline) {
             // 在快速公路上，排除單線道平面側車道/減速引道低速測點 (<= 45 km/h) 誤污染高架主線
             if (road.type === 'express' && spd <= 45 && laneCount === 1) {
               if (!bestMainline) {
@@ -5809,7 +5872,7 @@
           }
         }
 
-        if (bestMainline && typeof bestMainline.speed === 'number' && bestMainline.speed > 0) {
+        if (bestMainline && typeof bestMainline.speed === 'number' && bestMainline.speed >= 0) {
           return {
             TravelSpeed: bestMainline.speed,
             DataCollectTime: bestMainline.time,
@@ -5825,7 +5888,7 @@
         if (dataMap) {
           for (const [vdId, val] of Object.entries(dataMap)) {
             if (isMainlineVD(vdId) && vdId.includes(nameA) && (vdId.includes(`-${direction}-`) || !direction)) {
-              if (typeof val.speed === 'number' && val.speed > 10) {
+              if (typeof val.speed === 'number' && val.speed >= 0) {
                 return { TravelSpeed: val.speed, DataCollectTime: val.time, lanes: val.lanes };
               }
             }
@@ -5837,53 +5900,59 @@
     }
 
     /**
-     * 獲取道路即時路況數據 (優先解析即時中繼數值，斷線時自動平滑備援)
+     * 獲取道路即時路況數據 (優先解析即時中繼數值，斷線時顯示真實離線狀態)
      */
     function generateTrafficData(road, direction) {
-      const now = new Date();
-      const isLive = (TrafficDataStore.status === 'live');
+      const hasData = (TrafficDataStore.status === 'live' || TrafficDataStore.status === 'stale');
       const stationData = [];
       const totalSts = road.stations.length;
+      const dataFetchTimeStr = TrafficDataStore.dataTimestamp > 0
+        ? formatTaiwanTime(TrafficDataStore.dataTimestamp, false)
+        : (TrafficDataStore.updateTimeStr ? TrafficDataStore.updateTimeStr.slice(-8) : '--:--:--');
 
       road.stations.forEach((st, idx) => {
         let avgSpeed = -1;
         let statusType = 'fresh';
-        let collectTimeStr = formatShortTime(now);
+        let collectTimeStr = dataFetchTimeStr;
         let liveLanes = null;
 
-        if (isLive) {
+        if (hasData) {
           // 對齊區間幾何中點：依行進方向決定相鄰站點，使列表與地圖完全一致
           const nextSt = (direction === 'N' || direction === 'W') 
             ? (idx > 0 ? road.stations[idx - 1] : (idx < totalSts - 1 ? road.stations[idx + 1] : null))
             : (idx < totalSts - 1 ? road.stations[idx + 1] : (idx > 0 ? road.stations[idx - 1] : null));
 
           const matched = findTDXSectionData(road, st, direction, nextSt);
-          if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null && matched.TravelSpeed > 0) {
+          if (matched && matched.TravelSpeed !== undefined && matched.TravelSpeed !== null && matched.TravelSpeed >= 0) {
             avgSpeed = Math.round(matched.TravelSpeed);
             liveLanes = matched.lanes;
             if (matched.DataCollectTime) {
               const cDate = new Date(matched.DataCollectTime);
               if (!isNaN(cDate.getTime())) {
-                collectTimeStr = formatShortTime(cDate);
+                collectTimeStr = formatTaiwanTime(Math.floor(cDate.getTime() / 1000), false);
               }
             }
           }
         }
 
         // 無真實回傳時嚴禁填入離線備援常模假數字：維持 avgSpeed = -1，由視圖端統一顯示「離線 / --」
-        if (avgSpeed <= 0) {
+        if (avgSpeed < 0) {
           avgSpeed = -1;
           statusType = 'offline';
           collectTimeStr = '--:--';
         }
 
-        // 車道時速封裝 (優先採用 VD 真實各車道讀數；無個別車道資料時以真實斷面均速呈現，不做 ±3 虛構拆分)
+        // 車道時速封裝 (保留真實車道索引；無個別車道資料時才以斷面均速補齊)
         const lanes = [];
+        const hasLaneArray = Array.isArray(liveLanes) && liveLanes.length > 0;
         for (let l = 1; l <= st.lanes; l++) {
           let laneSpeed = -1;
-          if (liveLanes && liveLanes[l - 1] !== undefined && liveLanes[l - 1] > 0) {
-            laneSpeed = liveLanes[l - 1];
-          } else if (avgSpeed > 0) {
+          if (hasLaneArray) {
+            const rawLaneSpd = liveLanes[l - 1];
+            if (rawLaneSpd !== null && rawLaneSpd !== undefined && rawLaneSpd >= 0) {
+              laneSpeed = rawLaneSpd;
+            }
+          } else if (avgSpeed >= 0) {
             laneSpeed = avgSpeed;
           }
           lanes.push({
@@ -5904,7 +5973,7 @@
 
       // 篩選即時事故與路況通報
       const incidents = [];
-      if (isLive && TrafficDataStore.incidents && TrafficDataStore.incidents.length > 0) {
+      if (hasData && TrafficDataStore.incidents && TrafficDataStore.incidents.length > 0) {
         TrafficDataStore.incidents.forEach(inc => {
           const rName = inc.RoadName || '';
           if (rName.includes(road.num) || (road.name && rName.includes(road.name.slice(0, 2)))) {
@@ -5919,7 +5988,7 @@
       return {
         roadId: road.id,
         direction: direction,
-        fetchTime: formatShortTime(now),
+        fetchTime: dataFetchTimeStr,
         incidents: incidents.slice(0, 3),
         stations: stationData
       };
@@ -5961,7 +6030,7 @@
     }
 
     function getSpeedColor(speed, roadType = 'freeway', speedLimit = null) {
-      if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return 'var(--speed-gray)';
+      if (speed === null || speed === undefined || isNaN(speed) || speed < 0) return 'var(--speed-gray)';
       // 有法定速限時改採「速限比例」判色（國5）：80%+ 綠、60%+ 黃、40%+ 橘、25%+ 紅、以下紫
       if (speedLimit && speedLimit > 0) {
         const ratio = speed / speedLimit;
@@ -6073,21 +6142,6 @@
         if (btnText) btnText.textContent = '🗺️ 地圖';
       }
     }
-
-    async function manualRefreshTraffic() {
-      const btn = document.getElementById('fabReloadBtn');
-      if (btn) btn.style.transform = 'rotate(360deg)';
-      await fetchLiveTrafficData(true);
-      if (AppState.currentView === 'map') {
-        drawRoadNetworkOnMap();
-      } else if (AppState.currentView === 'index') {
-        renderIndexView();
-      } else {
-        renderRoadDetailView();
-      }
-      setTimeout(() => { if (btn) btn.style.transform = ''; }, 600);
-    }
-    window.manualRefresh = manualRefreshTraffic;
 
     function goBackHome() {
       const currentMode = localStorage.getItem('traffic_view_mode') || 'map';
@@ -6302,19 +6356,6 @@
       if (btn) btn.textContent = theme.id === 'dark' ? '🌙' : (theme.id === 'street' ? '🏙️' : '⛰️');
     }
 
-    async function manualRefreshTraffic() {
-      const btn = document.getElementById('fabReloadBtn');
-      if (btn) btn.textContent = '⏳';
-      await fetchLiveTrafficData(true);
-      if (AppState.currentView === 'map') {
-        drawRoadNetworkOnMap();
-      }
-      if (btn) {
-        btn.textContent = '✅';
-        setTimeout(() => { btn.textContent = '🔄'; }, 1000);
-      }
-    }
-
     function initLeafletMap() {
       const mapEl = document.getElementById('map');
       if (!mapEl) return;
@@ -6373,10 +6414,11 @@
     }
 
     function getSpeedHex(speed, roadType = 'freeway', speedLimit = null) {
-      if (speed === null || speed === undefined || isNaN(speed) || speed <= 0) return '#64748b';
-      // 有法定速限時改採「速限比例」判色（國5）：80%+ 綠、60%+ 黃、40%+ 橘、25%+ 紅、以下紫
+      if (speed === null || speed === undefined || isNaN(speed) || speed < 0) return '#64748b';
+      // 有法定速限時改採「速限比例」判色：80%+ 綠、60%+ 黃、40%+ 橘、25%+ 紅、以下紫、超速亮青
       if (speedLimit && speedLimit > 0) {
         const ratio = speed / speedLimit;
+        if (ratio > 1.0) return '#22d3ee';
         if (ratio >= 0.80) return '#10b981';
         if (ratio >= 0.60) return '#f59e0b';
         if (ratio >= 0.40) return '#f97316';
@@ -6447,8 +6489,8 @@
 
     function buildDualPopupHTML(road, st1, st2, dir1, dir2, speedFwd, speedRev) {
       // 嚴禁離線備援常模假數字：無真實回傳一律顯示 '--'
-      const finalSpeedFwd = (speedFwd !== undefined && speedFwd !== null && !isNaN(speedFwd) && speedFwd > 0) ? speedFwd : null;
-      const finalSpeedRev = (speedRev !== undefined && speedRev !== null && !isNaN(speedRev) && speedRev > 0) ? speedRev : finalSpeedFwd;
+      const finalSpeedFwd = (speedFwd !== undefined && speedFwd !== null && !isNaN(speedFwd) && speedFwd >= 0) ? speedFwd : null;
+      const finalSpeedRev = (speedRev !== undefined && speedRev !== null && !isNaN(speedRev) && speedRev >= 0) ? speedRev : finalSpeedFwd;
 
       const dir1Label = road.directions[0].name;
       const dir2Label = road.directions[1] ? road.directions[1].name : '逆向';
@@ -6589,7 +6631,7 @@
           } else if (AppState.selectedMapDir === 'forward') {
             nodeSpeed = spdF;
           } else {
-            nodeSpeed = (spdF > 0 && spdR > 0) ? Math.round((spdF + spdR) / 2) : Math.max(spdF, spdR);
+            nodeSpeed = (spdF >= 0 && spdR >= 0) ? Math.round((spdF + spdR) / 2) : Math.max(spdF, spdR);
           }
 
           const circle = L.circleMarker([st.lat, st.lng], {
@@ -6861,7 +6903,7 @@
                 <div class="gps-nav-label" style="color: #60a5fa; font-weight: 700;">📍 目前交流道</div>
                 <div class="gps-nav-name" style="color: #60a5fa;">${renderStationNameHTML(currentStation.station.name, false)}</div>
                 <div class="gps-nav-speed" style="color: ${getSpeedColor(currentStation.avgSpeed, road.type, curSpeedLimit)}">
-                  ${currentStation.avgSpeed > 0 ? `${currentStation.avgSpeed} km/h` : '--'}
+                  ${currentStation.avgSpeed >= 0 ? `${currentStation.avgSpeed} km/h` : '--'}
                 </div>
               </div>
 
@@ -6870,7 +6912,7 @@
                 <div class="gps-nav-label">➡️ 下一出口 (即將抵達)</div>
                 <div class="gps-nav-name">${nextStation ? renderStationNameHTML(nextStation.station.name, false) : '路線終點'}</div>
                 <div class="gps-nav-speed" style="color: ${nextStation ? getSpeedColor(nextStation.avgSpeed, road.type, nextSpeedLimit) : 'var(--text-dim)'}">
-                  ${nextStation ? (nextStation.avgSpeed > 0 ? `${nextStation.avgSpeed} km/h` : '--') : '--'}
+                  ${nextStation ? (nextStation.avgSpeed >= 0 ? `${nextStation.avgSpeed} km/h` : '--') : '--'}
                 </div>
               </div>
             </div>
@@ -6889,12 +6931,14 @@
       if (road.hasTunnelMode) {
         const tunnelSts = traffic.stations.filter(s => s.station.isTunnel);
         if (tunnelSts.length > 0) {
-          const l1Speeds = tunnelSts.map(s => s.lanes[0] ? s.lanes[0].speed : -1).filter(v => v > 0);
-          const l2Speeds = tunnelSts.map(s => s.lanes[1] ? s.lanes[1].speed : -1).filter(v => v > 0);
+          const l1Speeds = tunnelSts.map(s => s.lanes[0] ? s.lanes[0].speed : -1).filter(v => v >= 0);
+          const l2Speeds = tunnelSts.map(s => s.lanes[1] ? s.lanes[1].speed : -1).filter(v => v >= 0);
           const avgL1 = l1Speeds.length > 0 ? Math.round(l1Speeds.reduce((a,b)=>a+b,0)/l1Speeds.length) : -1;
           const avgL2 = l2Speeds.length > 0 ? Math.round(l2Speeds.reduce((a,b)=>a+b,0)/l2Speeds.length) : -1;
           const l1Time = avgL1 > 0 ? (12.9 / avgL1 * 60).toFixed(1) : '--';
           const l2Time = avgL2 > 0 ? (12.9 / avgL2 * 60).toFixed(1) : '--';
+          const l1TimeLabel = avgL1 > 0 ? `約 ${l1Time} 分` : (avgL1 === 0 ? '塞車停滯' : '約 -- 分');
+          const l2TimeLabel = avgL2 > 0 ? `約 ${l2Time} 分` : (avgL2 === 0 ? '塞車停滯' : '約 -- 分');
           // 雪隧全線位於國5 15K 之後（法定速限 90 km/h），依速限比例判色
           const tunnelSpeedLimit = getRoadSpeedLimit(road, tunnelSts[0].station.k);
           const l1Color = getSpeedColor(avgL1, road.type, tunnelSpeedLimit);
@@ -6905,16 +6949,16 @@
           let l1Winner = false;
           let l2Winner = false;
 
-          if (avgL1 > 0 && avgL2 > 0) {
+          if (avgL1 >= 0 && avgL2 >= 0) {
             const diff = avgL1 - avgL2;
             if (diff >= 4) {
-              const saveTime = (parseFloat(l2Time) - parseFloat(l1Time)).toFixed(1);
-              recText = `👉 系統推薦：【建議走內側車道】(快 ${diff} km/h，預估省 ${saveTime} 分)`;
+              const saveTime = (l1Time !== '--' && l2Time !== '--') ? (parseFloat(l2Time) - parseFloat(l1Time)).toFixed(1) : '--';
+              recText = `👉 系統推薦：【建議走內側車道】(快 ${diff} km/h${saveTime !== '--' ? `，預估省 ${saveTime} 分` : ''})`;
               recClass = 'fast';
               l1Winner = true;
             } else if (diff <= -4) {
-              const saveTime = (parseFloat(l1Time) - parseFloat(l2Time)).toFixed(1);
-              recText = `👉 系統推薦：【建議走外側車道】(快 ${Math.abs(diff)} km/h，預估省 ${saveTime} 分)`;
+              const saveTime = (l1Time !== '--' && l2Time !== '--') ? (parseFloat(l1Time) - parseFloat(l2Time)).toFixed(1) : '--';
+              recText = `👉 系統推薦：【建議走外側車道】(快 ${Math.abs(diff)} km/h${saveTime !== '--' ? `，預估省 ${saveTime} 分` : ''})`;
               recClass = 'fast';
               l2Winner = true;
             } else {
@@ -6931,13 +6975,13 @@
               <div class="decision-grid">
                 <div class="decision-col ${l1Winner ? 'winner' : ''}">
                   <span class="decision-lane-title">內側 (快)</span>
-                  <span class="decision-speed" style="color: ${l1Color}">${avgL1 > 0 ? `${avgL1} km/h` : '--'}</span>
-                  <span class="decision-time">約 ${l1Time} 分</span>
+                  <span class="decision-speed" style="color: ${l1Color}">${avgL1 >= 0 ? `${avgL1} km/h` : '--'}</span>
+                  <span class="decision-time">${l1TimeLabel}</span>
                 </div>
                 <div class="decision-col ${l2Winner ? 'winner' : ''}">
                   <span class="decision-lane-title">外側 (慢)</span>
-                  <span class="decision-speed" style="color: ${l2Color}">${avgL2 > 0 ? `${avgL2} km/h` : '--'}</span>
-                  <span class="decision-time">約 ${l2Time} 分</span>
+                  <span class="decision-speed" style="color: ${l2Color}">${avgL2 >= 0 ? `${avgL2} km/h` : '--'}</span>
+                  <span class="decision-time">${l2TimeLabel}</span>
                 </div>
               </div>
               ${recText ? `<div class="decision-rec-banner ${recClass}">${recText}</div>` : ''}
@@ -6986,11 +7030,11 @@
               <div class="tunnel-lanes-row">
                 <div class="tunnel-lane-box">
                   <span class="tunnel-lane-title">內側 (快)</span>
-                  <span class="tunnel-lane-speed" style="color: ${l1Color}">${lane1.speed > 0 ? `${lane1.speed}` : '--'}</span>
+                  <span class="tunnel-lane-speed" style="color: ${l1Color}">${lane1.speed >= 0 ? `${lane1.speed}` : '--'}</span>
                 </div>
                 <div class="tunnel-lane-box">
                   <span class="tunnel-lane-title">外側 (慢)</span>
-                  <span class="tunnel-lane-speed" style="color: ${l2Color}">${lane2.speed > 0 ? `${lane2.speed}` : '--'}</span>
+                  <span class="tunnel-lane-speed" style="color: ${l2Color}">${lane2.speed >= 0 ? `${lane2.speed}` : '--'}</span>
                 </div>
               </div>
             </div>
@@ -7005,12 +7049,12 @@
               </div>
 
               <div class="strip-right">
-                ${item.avgSpeed <= 0 ? '<span class="strip-badge-missing">離線</span>' : ''}
+                ${item.avgSpeed < 0 ? '<span class="strip-badge-missing">離線</span>' : ''}
                 ${stationSpeedLimit ? `<span class="strip-badge-missing" style="background:rgba(96,165,250,0.15); color:#60a5fa;">限${stationSpeedLimit}</span>` : ''}
                 ${stationSpeedLimit && item.avgSpeed > stationSpeedLimit ? `<span class="strip-badge-missing" style="background:rgba(34,211,238,0.15); color:#22d3ee;">超速</span>` : ''}
 
                 <span class="strip-avg-speed" style="color: ${speedColor}">
-                  ${item.avgSpeed > 0 ? item.avgSpeed : '--'}
+                  ${item.avgSpeed >= 0 ? item.avgSpeed : '--'}
                 </span>
               </div>
             </div>
@@ -7133,20 +7177,29 @@
     async function manualRefresh() {
       AppState.countdownSeconds = 60;
       updateCountdownDisplay();
-      
+
       const refreshBtn = document.querySelector('.btn-refresh');
-      if (refreshBtn) refreshBtn.textContent = '⏳ 更新中';
+      const fabBtn = document.getElementById('fabReloadBtn');
+      if (refreshBtn) refreshBtn.innerHTML = '⏳<span class="btn-refresh-text"> 更新中</span>';
+      if (fabBtn) fabBtn.textContent = '⏳';
 
       await fetchLiveTrafficData(true);
 
-      if (refreshBtn) refreshBtn.textContent = '🔄 刷新';
+      if (refreshBtn) refreshBtn.innerHTML = '🔄<span class="btn-refresh-text"> 刷新</span>';
+      if (fabBtn) {
+        fabBtn.textContent = '✅';
+        setTimeout(() => { if (fabBtn) fabBtn.textContent = '🔄'; }, 1000);
+      }
 
-      if (AppState.currentView === 'index') {
+      if (AppState.currentView === 'map') {
+        drawRoadNetworkOnMap();
+      } else if (AppState.currentView === 'index') {
         renderIndexView();
       } else {
         renderRoadDetailView();
       }
     }
+    window.manualRefreshTraffic = manualRefresh;
 
     function triggerGeolocation() {
       if (AppState.watchId !== null || AppState.userLocation) {

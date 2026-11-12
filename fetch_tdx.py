@@ -5,12 +5,15 @@ TDX 全台即時路況資料抓取與中繼處理模組
 由 GitHub Actions 自動排程定期執行，將高公局與公路局真實 VD 數據彙整為輕量 traffic_live.json
 """
 
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import re
 import sys
 import time
 import requests
+
+TW_TZ = timezone(timedelta(hours=8))
 
 TDX_CLIENT_ID = os.environ.get("TDX_CLIENT_ID", "")
 TDX_CLIENT_SECRET = os.environ.get("TDX_CLIENT_SECRET", "")
@@ -58,18 +61,24 @@ def parse_vd_lives(data):
     if not isinstance(data, dict) or "VDLives" not in data:
         return res_map
 
-    collect_time = data.get("UpdateTime", time.strftime("%Y-%m-%d %H:%M:%S"))
+    default_collect_time = data.get("UpdateTime", datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S"))
 
     for item in data.get("VDLives", []):
         vd_id = item.get("VDID", "")
         if not vd_id:
             continue
+        status = item.get("Status")
+        if status is not None and status != 0:
+            continue
 
-        speeds = []
+        collect_time = item.get("DataCollectTime") or default_collect_time
+        lane_speeds = []
+        valid_speeds = []
         for flow in item.get("LinkFlows", []):
             for lane in flow.get("Lanes", []):
                 err = lane.get("ErrorType", "diag0")
                 if err and err != "diag0":
+                    lane_speeds.append(None)
                     continue
                 spd = lane.get("Speed")
                 occ = lane.get("Occupancy", 0) or 0
@@ -77,17 +86,25 @@ def parse_vd_lives(data):
                 # 1. 有效行駛車速：0 < spd <= 160
                 # 2. 當 spd == 0 時，僅在 Occupancy > 15% 時才代表車輛卡在線圈上的真實嚴重紫爆定點
                 # 3. 若 spd == 0 且 Occupancy == 0 (或為空)，代表該車道無車流通行 / 閒置車道 / 無採樣，嚴禁計入平均車速
+                # 4. 以 None 保留原始車道索引位置，避免內側車道無資料時由外側車道遞補錯位
                 if spd is not None and isinstance(spd, (int, float)):
                     if 0 < spd <= 160:
-                        speeds.append(round(spd))
+                        val = round(spd)
+                        lane_speeds.append(val)
+                        valid_speeds.append(val)
                     elif spd == 0 and occ > 15:
-                        speeds.append(0)
+                        lane_speeds.append(0)
+                        valid_speeds.append(0)
+                    else:
+                        lane_speeds.append(None)
+                else:
+                    lane_speeds.append(None)
 
-        if speeds:
-            avg_speed = round(sum(speeds) / len(speeds))
+        if valid_speeds:
+            avg_speed = round(sum(valid_speeds) / len(valid_speeds))
             res_map[vd_id] = {
                 "speed": avg_speed,
-                "lanes": speeds,
+                "lanes": lane_speeds,
                 "time": collect_time
             }
 
@@ -112,7 +129,7 @@ def main():
     highway_map = parse_vd_lives(hw_data)
     print(f"[+] 快速公路/省道 VD 即時有效測點: {len(highway_map)} 處")
 
-    current_time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    current_time_str = datetime.now(TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
     output = {
         "status": "success",
